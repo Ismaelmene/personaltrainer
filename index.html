@@ -290,10 +290,22 @@ function goPersonalView(view){
   document.getElementById('sidebar').classList.remove('open');
   const c = document.getElementById('personal-content');
   c.innerHTML = '<div class="spinner"></div>';
-  if(view==='dashboard') renderDashboard();
-  else if(view==='alunos') renderAlunosList();
-  else if(view==='agenda') renderAgendaGeral();
-  else if(view==='financeiro') renderFinanceiroGeral();
+  const run = async () => {
+    try{
+      if(view==='dashboard') await renderDashboard();
+      else if(view==='alunos') await renderAlunosList();
+      else if(view==='agenda') await renderAgendaGeral();
+      else if(view==='financeiro') await renderFinanceiroGeral();
+    }catch(err){
+      console.error(err);
+      c.innerHTML = `<div class="card" style="border-color:var(--danger);">
+        <div style="color:var(--danger); font-weight:600; margin-bottom:6px;">Erro ao carregar dados</div>
+        <div style="font-size:13px; color:var(--muted);">${escapeHtml(err.message||String(err))}</div>
+        <div style="font-size:12px; color:var(--muted); margin-top:8px;">Confira se o Firestore foi criado e se as regras (firestore.rules) foram publicadas no Firebase Console.</div>
+      </div>`;
+    }
+  };
+  run();
 }
 
 /* ---------- DASHBOARD ---------- */
