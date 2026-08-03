@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>PT Manager</title>
+<meta name="theme-color" content="#0F1115">
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --bg:#0F1115; --surface:#171A21; --surface2:#20242E; --surface3:#282D3A;
+  --border:#2A2F3A; --text:#F2F3F5; --muted:#8B92A0; --muted2:#5C6270;
+  --accent:#C6FF3D; --accent-dark:#9FD82B; --accent-ink:#10140A;
+  --orange:#FF7A45; --danger:#FF5C5C; --success:#3DDC97;
+  --radius:14px; --radius-sm:9px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;}
+h1,h2,h3,.font-display{font-family:'Oswald',sans-serif; letter-spacing:.02em; text-transform:uppercase;}
+button{font-family:inherit; cursor:pointer;}
+input,select,textarea{font-family:inherit; background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:var(--radius-sm); padding:10px 12px; width:100%; font-size:14px;}
+input:focus,select:focus,textarea:focus{outline:none; border-color:var(--accent);}
+::placeholder{color:var(--muted2);}
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:11px 18px; border-radius:999px; font-weight:600; font-size:13px; border:none; transition:.15s; white-space:nowrap;}
+.btn-accent{background:var(--accent); color:var(--accent-ink);}
+.btn-accent:hover{background:var(--accent-dark);}
+.btn-ghost{background:var(--surface2); color:var(--text); border:1px solid var(--border);}
+.btn-ghost:hover{background:var(--surface3);}
+.btn-danger{background:rgba(255,92,92,.12); color:var(--danger); border:1px solid rgba(255,92,92,.3);}
+.btn-danger:hover{background:rgba(255,92,92,.2);}
+.btn-sm{padding:7px 13px; font-size:12px;}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px;}
+.pill{display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em;}
+.pill-green{background:rgba(61,220,151,.14); color:var(--success);}
+.pill-orange{background:rgba(255,122,69,.14); color:var(--orange);}
+.pill-red{background:rgba(255,92,92,.14); color:var(--danger);}
+.pill-gray{background:var(--surface3); color:var(--muted);}
+.label{font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600; margin-bottom:6px; display:block;}
+.hidden{display:none !important;}
+::-webkit-scrollbar{width:8px; height:8px;}
+::-webkit-scrollbar-thumb{background:var(--surface3); border-radius:8px;}
+.spinner{width:22px;height:22px;border:3px solid var(--surface3);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.tab-btn{padding:9px 16px; border-radius:999px; font-size:13px; font-weight:600; background:transparent; color:var(--muted); border:1px solid transparent;}
+.tab-btn.active{background:var(--surface3); color:var(--accent); border-color:var(--border);}
+.nav-item{display:flex; align-items:center; gap:12px; padding:11px 14px; border-radius:var(--radius-sm); color:var(--muted); font-weight:600; font-size:13.5px; cursor:pointer; transition:.15s;}
+.nav-item:hover{background:var(--surface2); color:var(--text);}
+.nav-item.active{background:var(--accent); color:var(--accent-ink);}
+.modal-bg{position:fixed; inset:0; background:rgba(5,6,8,.75); backdrop-filter:blur(3px); z-index:50; display:flex; align-items:flex-start; justify-content:center; overflow-y:auto; padding:24px 14px;}
+.modal-box{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); width:100%; max-width:560px; padding:24px; margin:auto;}
+.toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--surface3); border:1px solid var(--border); padding:12px 20px; border-radius:999px; font-size:13px; font-weight:600; z-index:99; box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.toast.err{color:var(--danger); border-color:rgba(255,92,92,.4);}
+.toast.ok{color:var(--success); border-color:rgba(61,220,151,.4);}
+.exercise-row{display:grid; grid-template-columns:1fr 60px 60px 70px 70px 1fr auto; gap:6px; align-items:center; margin-bottom:6px;}
+@media(max-width:760px){.exercise-row{grid-template-columns:1fr 1fr; }}
+.food-row{display:grid; grid-template-columns:1fr 90px 90px auto; gap:6px; align-items:center; margin-bottom:6px;}
+.sidebar{width:230px; background:var(--surface); border-right:1px solid var(--border); flex-shrink:0; display:flex; flex-direction:column; padding:18px 14px;}
+@media(max-width:900px){.sidebar{position:fixed; z-index:40; height:100vh; transform:translateX(-100%); transition:.2s;} .sidebar.open{transform:translateX(0);}}
+.stat-num{font-family:'Oswald',sans-serif; font-size:32px; font-weight:700; line-height:1;}
+.check-circle{width:22px;height:22px;border-radius:50%;border:2px solid var(--border); flex-shrink:0; cursor:pointer; display:flex; align-items:center; justify-content:center;}
+.check-circle.done{background:var(--accent); border-color:var(--accent);}
+</style>
+</head>
+<body>
+
+<div id="toast-area"></div>
+
+<!-- LOADING -->
+<div id="screen-loading" style="height:100vh; display:flex; align-items:center; justify-content:center;">
+  <div class="spinner"></div>
+</div>
+
+<!-- LOGIN -->
+<div id="screen-login" class="hidden" style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;">
+  <div style="width:100%; max-width:400px;">
+    <div style="text-align:center; margin-bottom:28px;">
+      <div class="font-display" style="font-size:26px; color:var(--accent);">PT MANAGER</div>
+      <div style="color:var(--muted); font-size:13px; margin-top:4px;">Treinos, dieta e financeiro em um só lugar</div>
+    </div>
+    <div class="card">
+      <div style="display:flex; gap:8px; margin-bottom:18px;">
+        <button class="tab-btn active" id="tab-role-personal" onclick="setLoginRole('personal')" style="flex:1;">Sou Personal</button>
+        <button class="tab-btn" id="tab-role-aluno" onclick="setLoginRole('aluno')" style="flex:1;">Sou Aluno</button>
+      </div>
+
+      <div id="login-form-area"></div>
+
+      <div id="personal-toggle-area" style="text-align:center; margin-top:16px; font-size:13px; color:var(--muted);">
+        <span id="toggle-text">Ainda não tem conta?</span>
+        <a href="javascript:void(0)" onclick="toggleAuthMode()" style="color:var(--accent); font-weight:600;" id="toggle-link">Criar conta de personal</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- APP PERSONAL -->
+<div id="screen-personal" class="hidden" style="display:flex; min-height:100vh;">
+  <div class="sidebar" id="sidebar">
+    <div class="font-display" style="font-size:19px; color:var(--accent); padding:6px 10px 22px;">PT MANAGER</div>
+    <div class="nav-item active" data-view="dashboard" onclick="goPersonalView('dashboard')">📊 Dashboard</div>
+    <div class="nav-item" data-view="alunos" onclick="goPersonalView('alunos')">👥 Alunos</div>
+    <div class="nav-item" data-view="agenda" onclick="goPersonalView('agenda')">📅 Agenda</div>
+    <div class="nav-item" data-view="financeiro" onclick="goPersonalView('financeiro')">💰 Financeiro</div>
+    <div style="flex:1;"></div>
+    <div style="border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
+      <div style="font-size:12px; color:var(--muted); padding:0 10px 10px;" id="personal-name-label"></div>
+      <div class="nav-item" onclick="doLogout()">🚪 Sair</div>
+    </div>
+  </div>
+  <div style="flex:1; min-width:0;">
+    <div style="display:none; padding:14px; border-bottom:1px solid var(--border);" id="mobile-topbar">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('sidebar').classList.toggle('open')">☰ Menu</button>
+    </div>
+    <div id="personal-content" style="padding:26px; max-width:1100px;"></div>
+  </div>
+</div>
+
+<!-- APP ALUNO -->
+<div id="screen-aluno" class="hidden" style="min-height:100vh; padding-bottom:80px;">
+  <div style="padding:20px 20px 10px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
+    <div>
+      <div class="font-display" style="font-size:18px; color:var(--accent);">PT MANAGER</div>
+      <div style="font-size:12px; color:var(--muted);" id="aluno-name-label"></div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="doLogout()">Sair</button>
+  </div>
+  <div id="aluno-content" style="padding:20px; max-width:700px; margin:0 auto;"></div>
+  <div style="position:fixed; bottom:0; left:0; right:0; background:var(--surface); border-top:1px solid var(--border); display:flex; padding:8px; gap:4px; z-index:30;">
+    <div class="nav-item aluno-tab active" data-view="treino" onclick="goAlunoView('treino')" style="flex:1; flex-direction:column; text-align:center; font-size:11px;">🏋️<br>Treino</div>
+    <div class="nav-item aluno-tab" data-view="dieta" onclick="goAlunoView('dieta')" style="flex:1; flex-direction:column; text-align:center; font-size:11px;">🥗<br>Dieta</div>
+    <div class="nav-item aluno-tab" data-view="progresso" onclick="goAlunoView('progresso')" style="flex:1; flex-direction:column; text-align:center; font-size:11px;">📈<br>Progresso</div>
+    <div class="nav-item aluno-tab" data-view="financeiro" onclick="goAlunoView('financeiro')" style="flex:1; flex-direction:column; text-align:center; font-size:11px;">💰<br>Financeiro</div>
+    <div class="nav-item aluno-tab" data-view="agenda" onclick="goAlunoView('agenda')" style="flex:1; flex-direction:column; text-align:center; font-size:11px;">📅<br>Agenda</div>
+  </div>
+</div>
+
+<script>
+/* ============ FIREBASE CONFIG ============
+   Substitua pelos dados do SEU projeto Firebase (Configurações do projeto > Geral > Seus apps > SDK) */
+const firebaseConfig = {
+  apiKey: "COLE_AQUI_SUA_API_KEY",
+  authDomain: "COLE_AQUI.firebaseapp.com",
+  projectId: "COLE_AQUI_PROJECT_ID",
+  storageBucket: "COLE_AQUI.appspot.com",
+  messagingSenderId: "COLE_AQUI",
+  appId: "COLE_AQUI"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+/* ============ ESTADO GLOBAL ============ */
+let currentUser = null; // {uid, role, name, email, trainerId?}
+let currentAlunoDoc = null; // objeto aluno quando logado como aluno
+let loginRole = 'personal';
+let authMode = 'login'; // login | signup (só personal pode signup)
+let personalView = 'dashboard';
+let alunoView = 'treino';
+let selectedAlunoId = null;
+let alunoDetailTab = 'perfil';
+let alunosListCache = [];
+let pesoChart = null;
+
+/* ============ UTIL ============ */
+function toast(msg, type){
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' '+type : '');
+  el.textContent = msg;
+  document.getElementById('toast-area').appendChild(el);
+  setTimeout(()=>el.remove(), 3200);
+}
+function fmtMoney(v){ return 'R$ ' + (Number(v)||0).toFixed(2).replace('.',','); }
+function fmtDate(d){
+  if(!d) return '-';
+  const dt = (d.toDate) ? d.toDate() : new Date(d);
+  return dt.toLocaleDateString('pt-BR');
+}
+function todayStr(){ return new Date().toISOString().split('T')[0]; }
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function escapeHtml(s){ return (s||'').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+/* ============ AUTH ============ */
+function setLoginRole(role){
+  loginRole = role;
+  document.getElementById('tab-role-personal').classList.toggle('active', role==='personal');
+  document.getElementById('tab-role-aluno').classList.toggle('active', role==='aluno');
+  document.getElementById('personal-toggle-area').classList.toggle('hidden', role==='aluno');
+  authMode = 'login';
+  renderLoginForm();
+}
+function toggleAuthMode(){
+  authMode = authMode==='login' ? 'signup' : 'login';
+  renderLoginForm();
+}
+function renderLoginForm(){
+  const area = document.getElementById('login-form-area');
+  const isSignup = authMode==='signup' && loginRole==='personal';
+  document.getElementById('toggle-text').textContent = isSignup ? 'Já tem conta?' : 'Ainda não tem conta?';
+  document.getElementById('toggle-link').textContent = isSignup ? 'Fazer login' : 'Criar conta de personal';
+  area.innerHTML = `
+    ${isSignup ? `<div style="margin-bottom:10px;"><label class="label">Nome</label><input id="in-nome" placeholder="Seu nome"></div>` : ''}
+    <div style="margin-bottom:10px;"><label class="label">Email</label><input id="in-email" type="email" placeholder="voce@email.com"></div>
+    <div style="margin-bottom:16px;"><label class="label">Senha</label><input id="in-senha" type="password" placeholder="••••••••"></div>
+    <button class="btn btn-accent" style="width:100%;" onclick="submitAuth()">${isSignup ? 'Criar conta' : 'Entrar'}</button>
+  `;
+}
+async function submitAuth(){
+  const email = document.getElementById('in-email').value.trim();
+  const senha = document.getElementById('in-senha').value;
+  if(!email || !senha){ toast('Preencha email e senha','err'); return; }
+  try{
+    if(authMode==='signup' && loginRole==='personal'){
+      const nome = document.getElementById('in-nome').value.trim();
+      if(!nome){ toast('Informe seu nome','err'); return; }
+      const cred = await auth.createUserWithEmailAndPassword(email, senha);
+      await db.collection('users').doc(cred.user.uid).set({role:'personal', name:nome, email, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    } else {
+      await auth.signInWithEmailAndPassword(email, senha);
+    }
+  }catch(err){
+    toast(traduzErro(err), 'err');
+  }
+}
+function traduzErro(err){
+  const map = {
+    'auth/invalid-email':'Email inválido',
+    'auth/user-not-found':'Usuário não encontrado',
+    'auth/wrong-password':'Senha incorreta',
+    'auth/invalid-credential':'Email ou senha incorretos',
+    'auth/email-already-in-use':'Este email já está em uso',
+    'auth/weak-password':'A senha precisa ter pelo menos 6 caracteres'
+  };
+  return map[err.code] || err.message || 'Erro inesperado';
+}
+function doLogout(){ auth.signOut(); }
+
+auth.onAuthStateChanged(async (user) => {
+  hideAllScreens();
+  if(!user){
+    currentUser = null; currentAlunoDoc = null;
+    document.getElementById('screen-login').classList.remove('hidden');
+    setLoginRole('personal');
+    return;
+  }
+  document.getElementById('screen-loading').classList.remove('hidden');
+  try{
+    const userDoc = await db.collection('users').doc(user.uid).get();
+    if(!userDoc.exists){ toast('Cadastro incompleto. Contate o suporte.','err'); auth.signOut(); return; }
+    const data = userDoc.data();
+    currentUser = {uid:user.uid, role:data.role, name:data.name, email:data.email, trainerId:data.trainerId||null};
+    if(data.role==='personal'){
+      document.getElementById('personal-name-label').textContent = data.name;
+      hideAllScreens();
+      document.getElementById('screen-personal').classList.remove('hidden');
+      updateMobileTopbar();
+      goPersonalView('dashboard');
+    } else {
+      const q = await db.collection('alunos').where('uid','==',user.uid).limit(1).get();
+      if(q.empty){ toast('Aluno não encontrado','err'); auth.signOut(); return; }
+      currentAlunoDoc = {id:q.docs[0].id, ...q.docs[0].data()};
+      document.getElementById('aluno-name-label').textContent = 'Olá, ' + (data.name||'').split(' ')[0];
+      hideAllScreens();
+      document.getElementById('screen-aluno').classList.remove('hidden');
+      goAlunoView('treino');
+    }
+  }catch(err){
+    console.error(err); toast('Erro ao carregar dados: '+err.message,'err');
+  }
+});
+function hideAllScreens(){
+  ['screen-loading','screen-login','screen-personal','screen-aluno'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+}
+function updateMobileTopbar(){
+  document.getElementById('mobile-topbar').style.display = window.innerWidth <= 900 ? 'block' : 'none';
+}
+window.addEventListener('resize', updateMobileTopbar);
+
+/* =========================================================
+   PERSONAL — NAVEGAÇÃO
+   ========================================================= */
+function goPersonalView(view){
+  personalView = view; selectedAlunoId = null;
+  document.querySelectorAll('#sidebar .nav-item[data-view]').forEach(el=>el.classList.toggle('active', el.dataset.view===view));
+  document.getElementById('sidebar').classList.remove('open');
+  const c = document.getElementById('personal-content');
+  c.innerHTML = '<div class="spinner"></div>';
+  if(view==='dashboard') renderDashboard();
+  else if(view==='alunos') renderAlunosList();
+  else if(view==='agenda') renderAgendaGeral();
+  else if(view==='financeiro') renderFinanceiroGeral();
+}
+
+/* ---------- DASHBOARD ---------- */
+async function renderDashboard(){
+  const snap = await db.collection('alunos').where('trainerId','==',currentUser.uid).get();
+  const alunos = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  alunosListCache = alunos;
+  const ativos = alunos.filter(a=>a.ativo!==false).length;
+  const hoje = new Date();
+  const diaSemanaHoje = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][hoje.getDay()];
+  let treinosHoje = 0;
+  alunos.forEach(a=>{ (a.treino?.dias||[]).forEach(d=>{ if(d.diaSemana===diaSemanaHoje) treinosHoje++; }); });
+
+  // pagamentos pendentes (checagem rápida via subcollections em paralelo)
+  let pendentes = 0;
+  await Promise.all(alunos.map(async a=>{
+    const pg = await db.collection('alunos').doc(a.id).collection('financeiro').where('status','in',['pendente','atrasado']).get();
+    pendentes += pg.size;
+  }));
+
+  const c = document.getElementById('personal-content');
+  c.innerHTML = `
+    <h1 style="font-size:24px; margin-bottom:4px;">Dashboard</h1>
+    <div style="color:var(--muted); font-size:13px; margin-bottom:22px;">Visão geral da sua consultoria</div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:24px;">
+      <div class="card"><div class="label">Alunos ativos</div><div class="stat-num" style="color:var(--accent);">${ativos}</div></div>
+      <div class="card"><div class="label">Treinos hoje (${diaSemanaHoje})</div><div class="stat-num">${treinosHoje}</div></div>
+      <div class="card"><div class="label">Pagamentos pendentes</div><div class="stat-num" style="color:${pendentes>0?'var(--orange)':'var(--text)'};">${pendentes}</div></div>
+      <div class="card"><div class="label">Total de alunos</div><div class="stat-num">${alunos.length}</div></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="font-size:15px; margin:0;">Alunos recentes</h3>
+      <button class="btn btn-accent btn-sm" onclick="goPersonalView('alunos')">Ver todos</button>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${alunos.slice(0,5).map(a=>`
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="openAlunoDetail('${a.id}')">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(a.nome)}</div>
+            <div style="font-size:12px; color:var(--muted);">${escapeHtml(a.objetivo||'Sem objetivo definido')}</div>
+          </div>
+          <span class="pill ${a.ativo!==false?'pill-green':'pill-gray'}">${a.ativo!==false?'Ativo':'Inativo'}</span>
+        </div>`).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhum aluno cadastrado ainda</div>'}
+    </div>
+  `;
+}
+
+/* ---------- ALUNOS: LISTA ---------- */
+async function renderAlunosList(){
+  const snap = await db.collection('alunos').where('trainerId','==',currentUser.uid).orderBy('nome').get();
+  alunosListCache = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  const c = document.getElementById('personal-content');
+  c.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+      <h1 style="font-size:24px; margin:0;">Alunos</h1>
+      <button class="btn btn-accent" onclick="openNovoAlunoModal()">+ Novo aluno</button>
+    </div>
+    <input placeholder="Buscar aluno..." style="margin-bottom:16px;" oninput="filterAlunos(this.value)">
+    <div id="alunos-list-wrap" style="display:flex; flex-direction:column; gap:8px;"></div>
+  `;
+  renderAlunosListRows(alunosListCache);
+}
+function renderAlunosListRows(list){
+  const wrap = document.getElementById('alunos-list-wrap');
+  if(!list.length){ wrap.innerHTML = '<div class="card" style="text-align:center; color:var(--muted);">Nenhum aluno encontrado</div>'; return; }
+  wrap.innerHTML = list.map(a=>`
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="openAlunoDetail('${a.id}')">
+      <div>
+        <div style="font-weight:600;">${escapeHtml(a.nome)}</div>
+        <div style="font-size:12px; color:var(--muted);">${escapeHtml(a.email)} · ${fmtMoney(a.mensalidade?.valor)}/mês</div>
+      </div>
+      <span class="pill ${a.ativo!==false?'pill-green':'pill-gray'}">${a.ativo!==false?'Ativo':'Inativo'}</span>
+    </div>
+  `).join('');
+}
+function filterAlunos(term){
+  term = term.toLowerCase();
+  renderAlunosListRows(alunosListCache.filter(a=>a.nome.toLowerCase().includes(term)));
+}
+
+function openNovoAlunoModal(){
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg'; bg.id = 'modal-novo-aluno';
+  bg.innerHTML = `
+    <div class="modal-box">
+      <h3 style="font-size:17px; margin-bottom:16px;">Novo aluno</h3>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div style="grid-column:1/-1;"><label class="label">Nome completo</label><input id="na-nome"></div>
+        <div><label class="label">Email (login do aluno)</label><input id="na-email" type="email"></div>
+        <div><label class="label">Senha inicial</label><input id="na-senha" type="text" placeholder="mín. 6 caracteres"></div>
+        <div><label class="label">Telefone</label><input id="na-telefone" placeholder="(00) 00000-0000"></div>
+        <div><label class="label">Data de nascimento</label><input id="na-nasc" type="date"></div>
+        <div style="grid-column:1/-1;"><label class="label">Objetivo</label><input id="na-objetivo" placeholder="Ex: Hipertrofia, emagrecimento..."></div>
+        <div><label class="label">Valor da mensalidade</label><input id="na-mensalidade" type="number" placeholder="0,00"></div>
+        <div><label class="label">Dia do vencimento</label><input id="na-vencimento" type="number" min="1" max="28" placeholder="Ex: 5"></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button class="btn btn-ghost" style="flex:1;" onclick="document.getElementById('modal-novo-aluno').remove()">Cancelar</button>
+        <button class="btn btn-accent" style="flex:1;" id="btn-criar-aluno" onclick="criarAluno()">Criar aluno</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bg);
+}
+async function criarAluno(){
+  const nome = document.getElementById('na-nome').value.trim();
+  const email = document.getElementById('na-email').value.trim();
+  const senha = document.getElementById('na-senha').value;
+  if(!nome || !email || !senha || senha.length<6){ toast('Preencha nome, email e senha (mín. 6 caracteres)','err'); return; }
+  const btn = document.getElementById('btn-criar-aluno'); btn.disabled = true; btn.textContent = 'Criando...';
+  try{
+    const idToken = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/create-aluno', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},
+      body: JSON.stringify({
+        nome, email, senha,
+        telefone: document.getElementById('na-telefone').value.trim(),
+        dataNascimento: document.getElementById('na-nasc').value,
+        objetivo: document.getElementById('na-objetivo').value.trim(),
+        mensalidadeValor: document.getElementById('na-mensalidade').value,
+        diaVencimento: document.getElementById('na-vencimento').value
+      })
+    });
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.error || 'Erro ao criar aluno');
+    toast('Aluno criado com sucesso!','ok');
+    document.getElementById('modal-novo-aluno').remove();
+    renderAlunosList();
+  }catch(err){
+    toast(err.message,'err');
+    btn.disabled = false; btn.textContent = 'Criar aluno';
+  }
+}
+
+/* ---------- ALUNO: DETALHE (tabs) ---------- */
+async function openAlunoDetail(alunoId){
+  selectedAlunoId = alunoId; alunoDetailTab = 'perfil';
+  await renderAlunoDetail();
+}
+async function renderAlunoDetail(){
+  const doc = await db.collection('alunos').doc(selectedAlunoId).get();
+  if(!doc.exists){ toast('Aluno não encontrado','err'); goPersonalView('alunos'); return; }
+  const aluno = {id:doc.id, ...doc.data()};
+  const c = document.getElementById('personal-content');
+  c.innerHTML = `
+    <a href="javascript:void(0)" onclick="goPersonalView('alunos')" style="color:var(--muted); font-size:13px; text-decoration:none;">← Voltar</a>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:10px 0 18px; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h1 style="font-size:22px; margin:0;">${escapeHtml(aluno.nome)}</h1>
+        <div style="font-size:12px; color:var(--muted);">${escapeHtml(aluno.email)}</div>
+      </div>
+      <span class="pill ${aluno.ativo!==false?'pill-green':'pill-gray'}">${aluno.ativo!==false?'Ativo':'Inativo'}</span>
+    </div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:14px;">
+      ${['perfil','treino','dieta','financeiro','progresso','agenda'].map(t=>`
+        <button class="tab-btn ${alunoDetailTab===t?'active':''}" onclick="switchAlunoTab('${t}')">${t.charAt(0).toUpperCase()+t.slice(1)}</button>
+      `).join('')}
+    </div>
+    <div id="aluno-detail-tab-content"></div>
+  `;
+  renderAlunoDetailTab(aluno);
+}
+function switchAlunoTab(tab){ alunoDetailTab = tab; renderAlunoDetail(); }
+function renderAlunoDetailTab(aluno){
+  const box = document.getElementById('aluno-detail-tab-content');
+  if(alunoDetailTab==='perfil') return renderTabPerfil(box, aluno);
+  if(alunoDetailTab==='treino') return renderTabTreino(box, aluno);
+  if(alunoDetailTab==='dieta') return renderTabDieta(box, aluno);
+  if(alunoDetailTab==='financeiro') return renderTabFinanceiro(box, aluno);
+  if(alunoDetailTab==='progresso') return renderTabProgresso(box, aluno);
+  if(alunoDetailTab==='agenda') return renderTabAgenda(box, aluno);
+}
+
+/* --- TAB PERFIL --- */
+function renderTabPerfil(box, aluno){
+  box.innerHTML = `
+    <div class="card" style="max-width:520px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div style="grid-column:1/-1;"><label class="label">Nome</label><input id="ep-nome" value="${escapeHtml(aluno.nome)}"></div>
+        <div><label class="label">Telefone</label><input id="ep-telefone" value="${escapeHtml(aluno.telefone||'')}"></div>
+        <div><label class="label">Nascimento</label><input id="ep-nasc" type="date" value="${aluno.dataNascimento||''}"></div>
+        <div style="grid-column:1/-1;"><label class="label">Objetivo</label><input id="ep-objetivo" value="${escapeHtml(aluno.objetivo||'')}"></div>
+        <div><label class="label">Mensalidade (R$)</label><input id="ep-mensalidade" type="number" value="${aluno.mensalidade?.valor||0}"></div>
+        <div><label class="label">Dia vencimento</label><input id="ep-vencimento" type="number" value="${aluno.mensalidade?.diaVencimento||5}"></div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:18px; flex-wrap:wrap;">
+        <button class="btn btn-accent" onclick="salvarPerfilAluno()">Salvar alterações</button>
+        <button class="btn btn-ghost" onclick="toggleAtivoAluno(${aluno.ativo===false})">${aluno.ativo!==false?'Marcar inativo':'Reativar aluno'}</button>
+        <button class="btn btn-ghost" onclick="resetSenhaAluno()">Redefinir senha</button>
+        <button class="btn btn-danger" onclick="excluirAluno()">Excluir aluno</button>
+      </div>
+    </div>
+  `;
+}
+async function salvarPerfilAluno(){
+  try{
+    await db.collection('alunos').doc(selectedAlunoId).update({
+      nome: document.getElementById('ep-nome').value.trim(),
+      telefone: document.getElementById('ep-telefone').value.trim(),
+      dataNascimento: document.getElementById('ep-nasc').value,
+      objetivo: document.getElementById('ep-objetivo').value.trim(),
+      'mensalidade.valor': Number(document.getElementById('ep-mensalidade').value)||0,
+      'mensalidade.diaVencimento': Number(document.getElementById('ep-vencimento').value)||5
+    });
+    toast('Perfil atualizado','ok');
+    renderAlunoDetail();
+  }catch(err){ toast(err.message,'err'); }
+}
+async function toggleAtivoAluno(novoAtivo){
+  await db.collection('alunos').doc(selectedAlunoId).update({ativo: novoAtivo});
+  toast(novoAtivo?'Aluno reativado':'Aluno marcado como inativo','ok');
+  renderAlunoDetail();
+}
+async function resetSenhaAluno(){
+  const novaSenha = prompt('Digite a nova senha para este aluno (mín. 6 caracteres):');
+  if(!novaSenha || novaSenha.length<6){ if(novaSenha!==null) toast('Senha muito curta','err'); return; }
+  try{
+    const idToken = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/reset-aluno-senha', {
+      method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},
+      body: JSON.stringify({alunoId: selectedAlunoId, novaSenha})
+    });
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.error);
+    toast('Senha redefinida com sucesso','ok');
+  }catch(err){ toast(err.message,'err'); }
+}
+async function excluirAluno(){
+  if(!confirm('Tem certeza que deseja excluir este aluno? Essa ação não pode ser desfeita.')) return;
+  try{
+    const idToken = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/delete-aluno', {
+      method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},
+      body: JSON.stringify({alunoId: selectedAlunoId})
+    });
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.error);
+    toast('Aluno excluído','ok');
+    goPersonalView('alunos');
+  }catch(err){ toast(err.message,'err'); }
+}
+
+/* --- TAB TREINO --- */
+let treinoEdit = null;
+function renderTabTreino(box, aluno){
+  treinoEdit = JSON.parse(JSON.stringify(aluno.treino || {dias:[]}));
+  if(!treinoEdit.dias) treinoEdit.dias = [];
+  box.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <div style="font-size:12px; color:var(--muted);">Última atualização: ${aluno.treino?.updatedAt ? fmtDate(aluno.treino.updatedAt) : 'nunca'}</div>
+      <button class="btn btn-accent btn-sm" onclick="addDiaTreino()">+ Adicionar dia de treino</button>
+    </div>
+    <div id="treino-dias-wrap"></div>
+    <button class="btn btn-accent" style="margin-top:16px;" onclick="salvarTreino()">Salvar treino</button>
+  `;
+  renderTreinoDias();
+}
+function renderTreinoDias(){
+  const wrap = document.getElementById('treino-dias-wrap');
+  if(!treinoEdit.dias.length){ wrap.innerHTML = '<div class="card" style="text-align:center; color:var(--muted);">Nenhum dia de treino cadastrado</div>'; return; }
+  wrap.innerHTML = treinoEdit.dias.map((dia, di)=>`
+    <div class="card" style="margin-bottom:12px;">
+      <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+        <select onchange="treinoEdit.dias[${di}].diaSemana=this.value" style="max-width:160px;">
+          ${['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'].map(d=>`<option ${dia.diaSemana===d?'selected':''}>${d}</option>`).join('')}
+        </select>
+        <input placeholder="Nome do treino (Ex: Treino A - Peito/Tríceps)" value="${escapeHtml(dia.nomeTreino||'')}" oninput="treinoEdit.dias[${di}].nomeTreino=this.value" style="flex:1; min-width:200px;">
+        <button class="btn btn-danger btn-sm" onclick="removeDiaTreino(${di})">Remover dia</button>
+      </div>
+      <div class="exercise-row" style="font-size:11px; color:var(--muted); font-weight:600;">
+        <div>Exercício</div><div>Séries</div><div>Reps</div><div>Carga</div><div>Desc.</div><div>Obs</div><div></div>
+      </div>
+      ${(dia.exercicios||[]).map((ex,ei)=>`
+        <div class="exercise-row">
+          <input value="${escapeHtml(ex.nome||'')}" placeholder="Ex: Supino reto" oninput="treinoEdit.dias[${di}].exercicios[${ei}].nome=this.value">
+          <input value="${escapeHtml(ex.series||'')}" placeholder="4" oninput="treinoEdit.dias[${di}].exercicios[${ei}].series=this.value">
+          <input value="${escapeHtml(ex.reps||'')}" placeholder="10" oninput="treinoEdit.dias[${di}].exercicios[${ei}].reps=this.value">
+          <input value="${escapeHtml(ex.carga||'')}" placeholder="kg" oninput="treinoEdit.dias[${di}].exercicios[${ei}].carga=this.value">
+          <input value="${escapeHtml(ex.descanso||'')}" placeholder="60s" oninput="treinoEdit.dias[${di}].exercicios[${ei}].descanso=this.value">
+          <input value="${escapeHtml(ex.obs||'')}" placeholder="obs" oninput="treinoEdit.dias[${di}].exercicios[${ei}].obs=this.value">
+          <button class="btn btn-ghost btn-sm" onclick="removeExercicio(${di},${ei})">✕</button>
+        </div>
+      `).join('')}
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="addExercicio(${di})">+ Exercício</button>
+    </div>
+  `).join('');
+}
+function addDiaTreino(){ treinoEdit.dias.push({id:uid(), diaSemana:'Segunda', nomeTreino:'', exercicios:[]}); renderTreinoDias(); }
+function removeDiaTreino(di){ treinoEdit.dias.splice(di,1); renderTreinoDias(); }
+function addExercicio(di){ if(!treinoEdit.dias[di].exercicios) treinoEdit.dias[di].exercicios=[]; treinoEdit.dias[di].exercicios.push({id:uid(), nome:'',series:'',reps:'',carga:'',descanso:'',obs:''}); renderTreinoDias(); }
+function removeExercicio(di,ei){ treinoEdit.dias[di].exercicios.splice(ei,1); renderTreinoDias(); }
+async function salvarTreino(){
+  try{
+    treinoEdit.updatedAt = firebase.firestore.Timestamp.now();
+    await db.collection('alunos').doc(selectedAlunoId).update({treino: treinoEdit});
+    toast('Treino salvo com sucesso','ok');
+  }catch(err){ toast(err.message,'err'); }
+}
+
+/* --- TAB DIETA --- */
+let dietaEdit = null;
+function renderTabDieta(box, aluno){
+  dietaEdit = JSON.parse(JSON.stringify(aluno.dieta || {refeicoes:[], restricoes:'', observacoesGerais:'', caloriasAlvo:''}));
+  if(!dietaEdit.refeicoes) dietaEdit.refeicoes = [];
+  box.innerHTML = `
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div><label class="label">Meta calórica diária (kcal)</label><input id="dt-calorias" value="${dietaEdit.caloriasAlvo||''}" placeholder="Ex: 2400"></div>
+        <div><label class="label">Restrições / alergias</label><input id="dt-restricoes" value="${escapeHtml(dietaEdit.restricoes||'')}" placeholder="Ex: intolerância à lactose"></div>
+        <div style="grid-column:1/-1;"><label class="label">Observações gerais</label><input id="dt-obs" value="${escapeHtml(dietaEdit.observacoesGerais||'')}" placeholder="Orientações gerais da dieta"></div>
+      </div>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <div style="font-size:12px; color:var(--muted);">Última atualização: ${aluno.dieta?.updatedAt ? fmtDate(aluno.dieta.updatedAt) : 'nunca'}</div>
+      <button class="btn btn-accent btn-sm" onclick="addRefeicao()">+ Adicionar refeição</button>
+    </div>
+    <div id="dieta-refeicoes-wrap"></div>
+    <button class="btn btn-accent" style="margin-top:16px;" onclick="salvarDieta()">Salvar dieta</button>
+  `;
+  renderRefeicoes();
+}
+function renderRefeicoes(){
+  const wrap = document.getElementById('dieta-refeicoes-wrap');
+  if(!dietaEdit.refeicoes.length){ wrap.innerHTML = '<div class="card" style="text-align:center; color:var(--muted);">Nenhuma refeição cadastrada</div>'; return; }
+  wrap.innerHTML = dietaEdit.refeicoes.map((ref, ri)=>`
+    <div class="card" style="margin-bottom:12px;">
+      <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+        <input type="time" value="${ref.horario||''}" oninput="dietaEdit.refeicoes[${ri}].horario=this.value" style="max-width:120px;">
+        <input placeholder="Nome (Ex: Café da manhã)" value="${escapeHtml(ref.nome||'')}" oninput="dietaEdit.refeicoes[${ri}].nome=this.value" style="flex:1; min-width:180px;">
+        <button class="btn btn-danger btn-sm" onclick="removeRefeicao(${ri})">Remover</button>
+      </div>
+      <div class="food-row" style="font-size:11px; color:var(--muted); font-weight:600;">
+        <div>Alimento</div><div>Qtd</div><div>Unidade</div><div></div>
+      </div>
+      ${(ref.alimentos||[]).map((al,ai)=>`
+        <div class="food-row">
+          <input value="${escapeHtml(al.nome||'')}" placeholder="Ex: Arroz integral" oninput="dietaEdit.refeicoes[${ri}].alimentos[${ai}].nome=this.value">
+          <input value="${escapeHtml(al.quantidade||'')}" placeholder="100" oninput="dietaEdit.refeicoes[${ri}].alimentos[${ai}].quantidade=this.value">
+          <input value="${escapeHtml(al.unidade||'')}" placeholder="g" oninput="dietaEdit.refeicoes[${ri}].alimentos[${ai}].unidade=this.value">
+          <button class="btn btn-ghost btn-sm" onclick="removeAlimento(${ri},${ai})">✕</button>
+        </div>
+      `).join('')}
+      <input placeholder="Observação da refeição (opcional)" value="${escapeHtml(ref.obs||'')}" oninput="dietaEdit.refeicoes[${ri}].obs=this.value" style="margin-top:6px;">
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="addAlimento(${ri})">+ Alimento</button>
+    </div>
+  `).join('');
+}
+function addRefeicao(){ dietaEdit.refeicoes.push({id:uid(), horario:'', nome:'', alimentos:[], obs:''}); renderRefeicoes(); }
+function removeRefeicao(ri){ dietaEdit.refeicoes.splice(ri,1); renderRefeicoes(); }
+function addAlimento(ri){ if(!dietaEdit.refeicoes[ri].alimentos) dietaEdit.refeicoes[ri].alimentos=[]; dietaEdit.refeicoes[ri].alimentos.push({id:uid(), nome:'', quantidade:'', unidade:'g'}); renderRefeicoes(); }
+function removeAlimento(ri,ai){ dietaEdit.refeicoes[ri].alimentos.splice(ai,1); renderRefeicoes(); }
+async function salvarDieta(){
+  try{
+    dietaEdit.caloriasAlvo = document.getElementById('dt-calorias').value;
+    dietaEdit.restricoes = document.getElementById('dt-restricoes').value.trim();
+    dietaEdit.observacoesGerais = document.getElementById('dt-obs').value.trim();
+    dietaEdit.updatedAt = firebase.firestore.Timestamp.now();
+    await db.collection('alunos').doc(selectedAlunoId).update({dieta: dietaEdit});
+    toast('Dieta salva com sucesso','ok');
+  }catch(err){ toast(err.message,'err'); }
+}
+
+/* --- TAB FINANCEIRO (visão do aluno específico) --- */
+async function renderTabFinanceiro(box, aluno){
+  box.innerHTML = '<div class="spinner"></div>';
+  const snap = await db.collection('alunos').doc(selectedAlunoId).collection('financeiro').orderBy('vencimento','desc').get();
+  const pagamentos = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  const isPersonal = currentUser.role==='personal';
+  box.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <div style="font-size:13px; color:var(--muted);">Mensalidade: <b style="color:var(--text);">${fmtMoney(aluno.mensalidade?.valor)}</b> · vencimento dia ${aluno.mensalidade?.diaVencimento||'-'}</div>
+      ${isPersonal ? `<button class="btn btn-accent btn-sm" onclick="openNovaCobrancaModal()">+ Gerar cobrança</button>` : ''}
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${pagamentos.map(p=>`
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(p.mes)}</div>
+            <div style="font-size:12px; color:var(--muted);">Venc: ${fmtDate(p.vencimento)} · ${fmtMoney(p.valor)}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="pill ${p.status==='pago'?'pill-green':p.status==='atrasado'?'pill-red':'pill-orange'}">${p.status}</span>
+            ${isPersonal && p.status!=='pago' ? `<button class="btn btn-ghost btn-sm" onclick="marcarPago('${p.id}')">Marcar pago</button>` : ''}
+          </div>
+        </div>
+      `).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhuma cobrança gerada ainda</div>'}
+    </div>
+  `;
+}
+function openNovaCobrancaModal(){
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg'; bg.id = 'modal-cobranca';
+  const hoje = new Date();
+  const mesRef = hoje.toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
+  bg.innerHTML = `
+    <div class="modal-box">
+      <h3 style="font-size:17px; margin-bottom:16px;">Nova cobrança</h3>
+      <div style="display:grid; gap:10px;">
+        <div><label class="label">Referência (mês)</label><input id="cb-mes" value="${mesRef}"></div>
+        <div><label class="label">Valor</label><input id="cb-valor" type="number" value="${currentAlunoDoc?.mensalidade?.valor||''}"></div>
+        <div><label class="label">Vencimento</label><input id="cb-vencimento" type="date"></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button class="btn btn-ghost" style="flex:1;" onclick="document.getElementById('modal-cobranca').remove()">Cancelar</button>
+        <button class="btn btn-accent" style="flex:1;" onclick="criarCobranca()">Gerar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bg);
+}
+async function criarCobranca(){
+  const mes = document.getElementById('cb-mes').value.trim();
+  const valor = Number(document.getElementById('cb-valor').value)||0;
+  const vencimento = document.getElementById('cb-vencimento').value;
+  if(!mes || !valor || !vencimento){ toast('Preencha todos os campos','err'); return; }
+  try{
+    await db.collection('alunos').doc(selectedAlunoId).collection('financeiro').add({
+      mes, valor, vencimento: new Date(vencimento), status:'pendente', createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('modal-cobranca').remove();
+    toast('Cobrança gerada','ok');
+    renderAlunoDetail();
+  }catch(err){ toast(err.message,'err'); }
+}
+async function marcarPago(pagId){
+  await db.collection('alunos').doc(selectedAlunoId).collection('financeiro').doc(pagId).update({status:'pago', pagoEm: firebase.firestore.FieldValue.serverTimestamp()});
+  toast('Pagamento confirmado','ok');
+  renderAlunoDetail();
+}
+
+/* --- TAB PROGRESSO --- */
+async function renderTabProgresso(box, aluno){
+  box.innerHTML = '<div class="spinner"></div>';
+  const snap = await db.collection('alunos').doc(selectedAlunoId).collection('progresso').orderBy('data','asc').get();
+  const regs = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  box.innerHTML = `
+    <div class="card" style="margin-bottom:16px;"><canvas id="chart-peso" height="90"></canvas></div>
+    <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+      <button class="btn btn-accent btn-sm" onclick="openNovaMedidaModal()">+ Novo registro</button>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${regs.slice().reverse().map(r=>`
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:13px;">
+            <b>${fmtDate(r.data)}</b> — Peso: ${r.peso||'-'}kg ${r.percGordura?`· %G: ${r.percGordura}%`:''}
+            ${r.cintura?`· Cintura: ${r.cintura}cm`:''}
+          </div>
+        </div>
+      `).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhum registro ainda</div>'}
+    </div>
+  `;
+  const ctx = document.getElementById('chart-peso');
+  if(pesoChart) pesoChart.destroy();
+  pesoChart = new Chart(ctx, {
+    type:'line',
+    data:{ labels: regs.map(r=>fmtDate(r.data)), datasets:[{label:'Peso (kg)', data: regs.map(r=>r.peso), borderColor:'#C6FF3D', backgroundColor:'rgba(198,255,61,.1)', tension:.3, fill:true}] },
+    options:{ plugins:{legend:{labels:{color:'#8B92A0'}}}, scales:{ x:{ticks:{color:'#8B92A0'}, grid:{color:'#2A2F3A'}}, y:{ticks:{color:'#8B92A0'}, grid:{color:'#2A2F3A'}} } }
+  });
+}
+function openNovaMedidaModal(){
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg'; bg.id = 'modal-medida';
+  bg.innerHTML = `
+    <div class="modal-box">
+      <h3 style="font-size:17px; margin-bottom:16px;">Novo registro de progresso</h3>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div><label class="label">Data</label><input id="md-data" type="date" value="${todayStr()}"></div>
+        <div><label class="label">Peso (kg)</label><input id="md-peso" type="number" step="0.1"></div>
+        <div><label class="label">% Gordura</label><input id="md-gordura" type="number" step="0.1"></div>
+        <div><label class="label">Cintura (cm)</label><input id="md-cintura" type="number" step="0.1"></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button class="btn btn-ghost" style="flex:1;" onclick="document.getElementById('modal-medida').remove()">Cancelar</button>
+        <button class="btn btn-accent" style="flex:1;" onclick="salvarMedida('${selectedAlunoId}')">Salvar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bg);
+}
+async function salvarMedida(alunoId){
+  try{
+    await db.collection('alunos').doc(alunoId).collection('progresso').add({
+      data: new Date(document.getElementById('md-data').value),
+      peso: Number(document.getElementById('md-peso').value)||null,
+      percGordura: Number(document.getElementById('md-gordura').value)||null,
+      cintura: Number(document.getElementById('md-cintura').value)||null,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('modal-medida').remove();
+    toast('Registro salvo','ok');
+    if(currentUser.role==='personal') renderAlunoDetail(); else renderAlunoView();
+  }catch(err){ toast(err.message,'err'); }
+}
+
+/* --- TAB AGENDA (por aluno) --- */
+async function renderTabAgenda(box, aluno){
+  box.innerHTML = '<div class="spinner"></div>';
+  const snap = await db.collection('alunos').doc(selectedAlunoId).collection('agenda').orderBy('data','asc').get();
+  const eventos = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  const isPersonal = currentUser.role==='personal';
+  box.innerHTML = `
+    ${isPersonal ? `<div style="display:flex; justify-content:flex-end; margin-bottom:10px;"><button class="btn btn-accent btn-sm" onclick="openNovoEventoModal('${selectedAlunoId}')">+ Novo compromisso</button></div>` : ''}
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${eventos.map(e=>`
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(e.tipo)} — ${fmtDate(e.data)} ${e.hora||''}</div>
+            <div style="font-size:12px; color:var(--muted);">${escapeHtml(e.obs||'')}</div>
+          </div>
+          ${isPersonal ? `<button class="btn btn-ghost btn-sm" onclick="excluirEvento('${selectedAlunoId}','${e.id}')">Excluir</button>` : ''}
+        </div>
+      `).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhum compromisso agendado</div>'}
+    </div>
+  `;
+}
+function openNovoEventoModal(alunoId){
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg'; bg.id = 'modal-evento';
+  bg.innerHTML = `
+    <div class="modal-box">
+      <h3 style="font-size:17px; margin-bottom:16px;">Novo compromisso</h3>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div><label class="label">Tipo</label><select id="ev-tipo"><option>Treino</option><option>Avaliação física</option><option>Consulta</option><option>Outro</option></select></div>
+        <div><label class="label">Data</label><input id="ev-data" type="date" value="${todayStr()}"></div>
+        <div><label class="label">Hora</label><input id="ev-hora" type="time"></div>
+        <div style="grid-column:1/-1;"><label class="label">Observação</label><input id="ev-obs"></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button class="btn btn-ghost" style="flex:1;" onclick="document.getElementById('modal-evento').remove()">Cancelar</button>
+        <button class="btn btn-accent" style="flex:1;" onclick="salvarEvento('${alunoId}')">Salvar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bg);
+}
+async function salvarEvento(alunoId){
+  try{
+    await db.collection('alunos').doc(alunoId).collection('agenda').add({
+      tipo: document.getElementById('ev-tipo').value,
+      data: new Date(document.getElementById('ev-data').value),
+      hora: document.getElementById('ev-hora').value,
+      obs: document.getElementById('ev-obs').value.trim(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('modal-evento').remove();
+    toast('Compromisso agendado','ok');
+    if(currentUser.role==='personal') renderAlunoDetail(); else renderAlunoView();
+  }catch(err){ toast(err.message,'err'); }
+}
+async function excluirEvento(alunoId, eventoId){
+  await db.collection('alunos').doc(alunoId).collection('agenda').doc(eventoId).delete();
+  toast('Removido','ok');
+  if(currentUser.role==='personal') renderAlunoDetail(); else renderAlunoView();
+}
+
+/* ---------- AGENDA GERAL (todos os alunos) ---------- */
+async function renderAgendaGeral(){
+  const alunosSnap = await db.collection('alunos').where('trainerId','==',currentUser.uid).get();
+  const alunos = alunosSnap.docs.map(d=>({id:d.id, ...d.data()}));
+  let todos = [];
+  await Promise.all(alunos.map(async a=>{
+    const evSnap = await db.collection('alunos').doc(a.id).collection('agenda').where('data','>=', new Date(new Date().setHours(0,0,0,0))).orderBy('data','asc').get();
+    evSnap.docs.forEach(d=>todos.push({id:d.id, alunoId:a.id, alunoNome:a.nome, ...d.data()}));
+  }));
+  todos.sort((x,y)=> (x.data.toDate?x.data.toDate():new Date(x.data)) - (y.data.toDate?y.data.toDate():new Date(y.data)));
+  const c = document.getElementById('personal-content');
+  c.innerHTML = `
+    <h1 style="font-size:24px; margin-bottom:18px;">Agenda geral</h1>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${todos.map(e=>`
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="openAlunoDetail('${e.alunoId}')">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(e.tipo)} — ${escapeHtml(e.alunoNome)}</div>
+            <div style="font-size:12px; color:var(--muted);">${fmtDate(e.data)} ${e.hora||''} ${e.obs?'· '+escapeHtml(e.obs):''}</div>
+          </div>
+        </div>
+      `).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhum compromisso futuro agendado</div>'}
+    </div>
+  `;
+}
+
+/* ---------- FINANCEIRO GERAL ---------- */
+async function renderFinanceiroGeral(){
+  const c = document.getElementById('personal-content');
+  c.innerHTML = '<div class="spinner"></div>';
+  const alunosSnap = await db.collection('alunos').where('trainerId','==',currentUser.uid).get();
+  const alunos = alunosSnap.docs.map(d=>({id:d.id, ...d.data()}));
+  let todos = [];
+  await Promise.all(alunos.map(async a=>{
+    const pgSnap = await db.collection('alunos').doc(a.id).collection('financeiro').orderBy('vencimento','desc').limit(6).get();
+    pgSnap.docs.forEach(d=>todos.push({id:d.id, alunoId:a.id, alunoNome:a.nome, ...d.data()}));
+  }));
+  const recebido = todos.filter(p=>p.status==='pago').reduce((s,p)=>s+(p.valor||0),0);
+  const pendente = todos.filter(p=>p.status!=='pago').reduce((s,p)=>s+(p.valor||0),0);
+  todos.sort((x,y)=> (y.vencimento.toDate?y.vencimento.toDate():new Date(y.vencimento)) - (x.vencimento.toDate?x.vencimento.toDate():new Date(x.vencimento)));
+  c.innerHTML = `
+    <h1 style="font-size:24px; margin-bottom:18px;">Financeiro</h1>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:22px;">
+      <div class="card"><div class="label">Recebido (últimas cobranças)</div><div class="stat-num" style="color:var(--success);">${fmtMoney(recebido)}</div></div>
+      <div class="card"><div class="label">Pendente</div><div class="stat-num" style="color:var(--orange);">${fmtMoney(pendente)}</div></div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${todos.map(p=>`
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="openAlunoDetail('${p.alunoId}')">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(p.alunoNome)} — ${escapeHtml(p.mes)}</div>
+            <div style="font-size:12px; color:var(--muted);">Venc: ${fmtDate(p.vencimento)} · ${fmtMoney(p.valor)}</div>
+          </div>
+          <span class="pill ${p.status==='pago'?'pill-green':p.status==='atrasado'?'pill-red':'pill-orange'}">${p.status}</span>
+        </div>
+      `).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhuma cobrança gerada ainda</div>'}
+    </div>
+  `;
+}
+
+/* =========================================================
+   ALUNO — NAVEGAÇÃO E TELAS
+   ========================================================= */
+function goAlunoView(view){
+  alunoView = view;
+  document.querySelectorAll('.aluno-tab').forEach(el=>el.classList.toggle('active', el.dataset.view===view));
+  renderAlunoView();
+}
+async function renderAlunoView(){
+  // recarrega dados atualizados do aluno
+  const doc = await db.collection('alunos').doc(currentAlunoDoc.id).get();
+  currentAlunoDoc = {id:doc.id, ...doc.data()};
+  selectedAlunoId = currentAlunoDoc.id;
+  const c = document.getElementById('aluno-content');
+  c.innerHTML = '<div class="spinner"></div>';
+  if(alunoView==='treino') renderAlunoTreino(c);
+  else if(alunoView==='dieta') renderAlunoDieta(c);
+  else if(alunoView==='progresso') renderAlunoProgresso(c);
+  else if(alunoView==='financeiro') renderAlunoFinanceiro(c);
+  else if(alunoView==='agenda') renderAlunoAgenda(c);
+}
+
+async function renderAlunoTreino(c){
+  const dias = currentAlunoDoc.treino?.dias || [];
+  const hoje = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][new Date().getDay()];
+  const checkSnap = await db.collection('alunos').doc(currentAlunoDoc.id).collection('checkins').where('dataStr','==', todayStr()).get();
+  const feitosHoje = new Set();
+  checkSnap.docs.forEach(d => (d.data().exerciciosFeitos||[]).forEach(id=>feitosHoje.add(id)));
+
+  c.innerHTML = `
+    <h2 style="font-size:19px; margin-bottom:4px;">Meu treino</h2>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:18px;">Hoje é ${hoje}</div>
+    ${dias.length ? dias.map(dia=>`
+      <div class="card" style="margin-bottom:14px; ${dia.diaSemana===hoje?'border-color:var(--accent);':''}">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div style="font-weight:700;">${escapeHtml(dia.diaSemana)} — ${escapeHtml(dia.nomeTreino||'Treino')}</div>
+          ${dia.diaSemana===hoje ? '<span class="pill pill-green">Hoje</span>' : ''}
+        </div>
+        ${(dia.exercicios||[]).map(ex=>`
+          <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
+            <div class="check-circle ${feitosHoje.has(ex.id)?'done':''}" onclick="toggleCheckin('${dia.id}','${ex.id}', this)"></div>
+            <div style="flex:1;">
+              <div style="font-weight:600; font-size:14px;">${escapeHtml(ex.nome)}</div>
+              <div style="font-size:12px; color:var(--muted);">${ex.series||'-'}x${ex.reps||'-'} · ${ex.carga||'-'}kg · desc ${ex.descanso||'-'} ${ex.obs?'· '+escapeHtml(ex.obs):''}</div>
+            </div>
+          </div>
+        `).join('') || '<div style="color:var(--muted); font-size:13px;">Sem exercícios cadastrados</div>'}
+      </div>
+    `).join('') : '<div class="card" style="text-align:center; color:var(--muted);">Seu personal ainda não montou seu treino</div>'}
+  `;
+}
+async function toggleCheckin(diaId, exId, el){
+  el.classList.toggle('done');
+  const done = el.classList.contains('done');
+  const ref = db.collection('alunos').doc(currentAlunoDoc.id).collection('checkins');
+  const snap = await ref.where('dataStr','==', todayStr()).limit(1).get();
+  if(snap.empty){
+    await ref.add({dataStr: todayStr(), data: new Date(), exerciciosFeitos: done?[exId]:[]});
+  } else {
+    const docRef = snap.docs[0].ref;
+    const atual = new Set(snap.docs[0].data().exerciciosFeitos||[]);
+    if(done) atual.add(exId); else atual.delete(exId);
+    await docRef.update({exerciciosFeitos: Array.from(atual)});
+  }
+}
+
+function renderAlunoDieta(c){
+  const dieta = currentAlunoDoc.dieta || {};
+  const refeicoes = (dieta.refeicoes||[]).slice().sort((a,b)=>(a.horario||'').localeCompare(b.horario||''));
+  c.innerHTML = `
+    <h2 style="font-size:19px; margin-bottom:12px;">Minha dieta</h2>
+    ${dieta.caloriasAlvo || dieta.restricoes ? `
+      <div class="card" style="margin-bottom:14px; font-size:13px;">
+        ${dieta.caloriasAlvo?`<div><b>Meta:</b> ${escapeHtml(String(dieta.caloriasAlvo))} kcal/dia</div>`:''}
+        ${dieta.restricoes?`<div><b>Restrições:</b> ${escapeHtml(dieta.restricoes)}</div>`:''}
+        ${dieta.observacoesGerais?`<div style="margin-top:6px; color:var(--muted);">${escapeHtml(dieta.observacoesGerais)}</div>`:''}
+      </div>` : ''}
+    ${refeicoes.length ? refeicoes.map(ref=>`
+      <div class="card" style="margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <div style="font-weight:700;">${escapeHtml(ref.nome)}</div>
+          <span class="pill pill-gray">${ref.horario||''}</span>
+        </div>
+        ${(ref.alimentos||[]).map(al=>`
+          <div style="font-size:13px; padding:4px 0; border-top:1px solid var(--border);">${escapeHtml(al.nome)} — ${escapeHtml(String(al.quantidade||''))}${escapeHtml(al.unidade||'')}</div>
+        `).join('')}
+        ${ref.obs?`<div style="font-size:12px; color:var(--muted); margin-top:6px;">${escapeHtml(ref.obs)}</div>`:''}
+      </div>
+    `).join('') : '<div class="card" style="text-align:center; color:var(--muted);">Seu personal ainda não montou sua dieta</div>'}
+  `;
+}
+function renderAlunoProgresso(c){ renderTabProgresso(c, currentAlunoDoc); }
+function renderAlunoFinanceiro(c){ renderTabFinanceiro(c, currentAlunoDoc); }
+function renderAlunoAgenda(c){ renderTabAgenda(c, currentAlunoDoc); }
+</script>
+</body>
+</html>
