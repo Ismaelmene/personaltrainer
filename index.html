@@ -355,8 +355,8 @@ async function renderDashboard(){
 
 /* ---------- ALUNOS: LISTA ---------- */
 async function renderAlunosList(){
-  const snap = await db.collection('alunos').where('trainerId','==',currentUser.uid).orderBy('nome').get();
-  alunosListCache = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  const snap = await db.collection('alunos').where('trainerId','==',currentUser.uid).get();
+  alunosListCache = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
   const c = document.getElementById('personal-content');
   c.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
