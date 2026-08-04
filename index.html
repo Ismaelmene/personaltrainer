@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>PT Manager</title>
+<title>Meu Personal</title>
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -80,7 +80,7 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--accent)
 <div id="screen-login" class="hidden" style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;">
   <div style="width:100%; max-width:400px;">
     <div style="text-align:center; margin-bottom:28px;">
-      <div class="font-display" style="font-size:26px; color:var(--accent);">PT MANAGER</div>
+      <div class="font-display" style="font-size:26px; color:var(--accent);">MEU PERSONAL</div>
       <div style="color:var(--muted); font-size:13px; margin-top:4px;">Treinos, dieta e financeiro em um só lugar</div>
     </div>
     <div class="card">
@@ -102,7 +102,7 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--accent)
 <!-- APP PERSONAL -->
 <div id="screen-personal" class="hidden" style="display:flex; min-height:100vh;">
   <div class="sidebar" id="sidebar">
-    <div class="font-display" style="font-size:19px; color:var(--accent); padding:6px 10px 22px;">PT MANAGER</div>
+    <div class="font-display" style="font-size:19px; color:var(--accent); padding:6px 10px 22px;">MEU PERSONAL</div>
     <div class="nav-item active" data-view="dashboard" onclick="goPersonalView('dashboard')">📊 Dashboard</div>
     <div class="nav-item" data-view="alunos" onclick="goPersonalView('alunos')">👥 Alunos</div>
     <div class="nav-item" data-view="agenda" onclick="goPersonalView('agenda')">📅 Agenda</div>
@@ -125,7 +125,7 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--accent)
 <div id="screen-aluno" class="hidden" style="min-height:100vh; padding-bottom:80px;">
   <div style="padding:20px 20px 10px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
     <div>
-      <div class="font-display" style="font-size:18px; color:var(--accent);">PT MANAGER</div>
+      <div class="font-display" style="font-size:18px; color:var(--accent);">MEU PERSONAL</div>
       <div style="font-size:12px; color:var(--muted);" id="aluno-name-label"></div>
     </div>
     <button class="btn btn-ghost btn-sm" onclick="doLogout()">Sair</button>
