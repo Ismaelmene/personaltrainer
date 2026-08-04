@@ -1,6 +1,6 @@
 {
-  "name": "PT Manager",
-  "short_name": "PT Manager",
+  "name": "Meu Personal",
+  "short_name": "Meu Personal",
   "description": "Gestão de alunos, treinos, dieta, financeiro e agenda para personal trainers",
   "start_url": "/",
   "display": "standalone",
