@@ -656,7 +656,8 @@ function diaAplicaHoje(dia){
     const fim = new Date(dia.dataFim+'T23:59:59');
     return hoje >= ini && hoje <= fim;
   }
-  const lista = (dia.diasSemana && dia.diasSemana.length) ? dia.diasSemana : (dia.diaSemana ? [dia.diaSemana] : []);
+  const lista = dia.diasSemana!==undefined ? dia.diasSemana : (dia.diaSemana ? [dia.diaSemana] : []);
+  if(!lista || !lista.length) return true; // nenhum dia marcado = vale todo dia
   return lista.includes(hojeNome);
 }
 function DIAS_SEMANA_LISTA_COM_DOMINGO(){ return ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']; }
@@ -732,12 +733,34 @@ function renderRefeicoes(){
   const wrap = document.getElementById('dieta-refeicoes-wrap');
   const refeicoes = semanaAtual().refeicoes;
   if(!refeicoes.length){ wrap.innerHTML = '<div class="card" style="text-align:center; color:var(--muted);">Nenhuma refeição cadastrada</div>'; return; }
-  wrap.innerHTML = refeicoes.map((ref, ri)=>`
+  wrap.innerHTML = refeicoes.map((ref, ri)=>{
+    const tipo = ref.tipoRepeticao || 'dias_semana';
+    const diasSel = ref.diasSemana || [];
+    return `
     <div class="card" style="margin-bottom:12px;">
       <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
         <input type="time" value="${ref.horario||''}" oninput="semanaAtual().refeicoes[${ri}].horario=this.value" style="max-width:120px;">
         <input placeholder="Nome (Ex: Café da manhã)" value="${escapeHtml(ref.nome||'')}" oninput="semanaAtual().refeicoes[${ri}].nome=this.value" style="flex:1; min-width:180px;">
         <button class="btn btn-danger btn-sm" onclick="removeRefeicao(${ri})">Remover</button>
+      </div>
+      <div style="margin-bottom:10px;">
+        <label class="label">Repetir por</label>
+        <div style="display:flex; gap:6px; margin-bottom:8px;">
+          <button class="tab-btn ${tipo==='dias_semana'?'active':''}" onclick="setRefeicaoTipoRepeticao(${ri},'dias_semana')">Dias da semana</button>
+          <button class="tab-btn ${tipo==='periodo'?'active':''}" onclick="setRefeicaoTipoRepeticao(${ri},'periodo')">Período de datas</button>
+        </div>
+        ${tipo==='dias_semana' ? `
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            ${DIAS_SEMANA_LISTA.map(d=>`<button class="tab-btn ${diasSel.includes(d)?'active':''}" onclick="toggleRefeicaoDiaSemanaChip(${ri},'${d}')">${d.slice(0,3)}</button>`).join('')}
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-top:4px;">Deixe sem marcar nenhum dia para essa refeição valer todo dia.</div>
+        ` : `
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <div><label class="label">De</label><input type="date" value="${ref.dataInicio||''}" oninput="semanaAtual().refeicoes[${ri}].dataInicio=this.value" style="max-width:160px;"></div>
+            <div><label class="label">Até</label><input type="date" value="${ref.dataFim||''}" oninput="semanaAtual().refeicoes[${ri}].dataFim=this.value" style="max-width:160px;"></div>
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-top:4px;">Essa refeição vale todo dia dentro do período selecionado.</div>
+        `}
       </div>
       <div class="food-row" style="font-size:11px; color:var(--muted); font-weight:600;">
         <div>Alimento</div><div>Qtd</div><div>Unidade</div><div></div>
@@ -753,9 +776,23 @@ function renderRefeicoes(){
       <input placeholder="Observação da refeição (opcional)" value="${escapeHtml(ref.obs||'')}" oninput="semanaAtual().refeicoes[${ri}].obs=this.value" style="margin-top:6px;">
       <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="addAlimento(${ri})">+ Alimento</button>
     </div>
-  `).join('');
+  `;}).join('');
 }
-function addRefeicao(){ semanaAtual().refeicoes.push({id:uid(), horario:'', nome:'', alimentos:[], obs:''}); renderRefeicoes(); }
+function setRefeicaoTipoRepeticao(ri, tipo){
+  const ref = semanaAtual().refeicoes[ri];
+  ref.tipoRepeticao = tipo;
+  if(tipo==='dias_semana' && !ref.diasSemana) ref.diasSemana = [];
+  if(tipo==='periodo'){ if(!ref.dataInicio) ref.dataInicio=''; if(!ref.dataFim) ref.dataFim=''; }
+  renderRefeicoes();
+}
+function toggleRefeicaoDiaSemanaChip(ri, diaNome){
+  const ref = semanaAtual().refeicoes[ri];
+  if(!ref.diasSemana) ref.diasSemana = [];
+  const idx = ref.diasSemana.indexOf(diaNome);
+  if(idx>=0) ref.diasSemana.splice(idx,1); else ref.diasSemana.push(diaNome);
+  renderRefeicoes();
+}
+function addRefeicao(){ semanaAtual().refeicoes.push({id:uid(), horario:'', nome:'', tipoRepeticao:'dias_semana', diasSemana:[], dataInicio:'', dataFim:'', alimentos:[], obs:''}); renderRefeicoes(); }
 function removeRefeicao(ri){ semanaAtual().refeicoes.splice(ri,1); renderRefeicoes(); }
 function addAlimento(ri){ const r=semanaAtual().refeicoes[ri]; if(!r.alimentos) r.alimentos=[]; r.alimentos.push({id:uid(), nome:'', quantidade:'', unidade:'g'}); renderRefeicoes(); }
 function removeAlimento(ri,ai){ semanaAtual().refeicoes[ri].alimentos.splice(ai,1); renderRefeicoes(); }
@@ -1075,8 +1112,17 @@ async function renderAlunoPlano(c){
   const checkSnap = await db.collection('alunos').doc(currentAlunoDoc.id).collection('checkins').where('dataStr','==', todayStr()).get();
   const feitosHoje = new Set();
   let treinosConcluidosHoje = [];
-  checkSnap.docs.forEach(d => { const data = d.data(); (data.exerciciosFeitos||[]).forEach(id=>feitosHoje.add(id)); treinosConcluidosHoje = data.treinosConcluidos||[]; });
-  const refeicoes = (sem.refeicoes||[]).slice().sort((a,b)=>(a.horario||'').localeCompare(b.horario||''));
+  let refeicoesFeitasHoje = new Set();
+  checkSnap.docs.forEach(d => {
+    const data = d.data();
+    (data.exerciciosFeitos||[]).forEach(id=>feitosHoje.add(id));
+    treinosConcluidosHoje = data.treinosConcluidos||[];
+    (data.refeicoesFeitas||[]).forEach(id=>refeicoesFeitasHoje.add(id));
+  });
+  const refeicoesTodas = (sem.refeicoes||[]).slice().sort((a,b)=>(a.horario||'').localeCompare(b.horario||''));
+  const refeicoesHoje = refeicoesTodas.filter(diaAplicaHoje).filter(r=>!refeicoesFeitasHoje.has(r.id));
+  const refeicoesConcluidasHoje = refeicoesTodas.filter(diaAplicaHoje).filter(r=>refeicoesFeitasHoje.has(r.id));
+  const outrasRefeicoes = refeicoesTodas.filter(r=>!diaAplicaHoje(r));
   const todosDias = sem.dias || [];
   const diasHoje = todosDias.filter(diaAplicaHoje);
   const outrosDias = todosDias.filter(d=>!diaAplicaHoje(d));
@@ -1121,14 +1167,14 @@ async function renderAlunoPlano(c){
       ${outrosDias.map(dia=>cardTreino(dia,false)).join('')}
     ` : ''}
 
-    <h3 style="font-size:14px; margin:18px 0 8px;">🥗 Dieta</h3>
+    <h3 style="font-size:14px; margin:18px 0 8px;">🥗 Dieta de hoje</h3>
     ${plano.caloriasAlvo || plano.restricoes ? `
       <div class="card" style="margin-bottom:14px; font-size:13px;">
         ${plano.caloriasAlvo?`<div><b>Meta:</b> ${escapeHtml(String(plano.caloriasAlvo))} kcal/dia</div>`:''}
         ${plano.restricoes?`<div><b>Restrições:</b> ${escapeHtml(plano.restricoes)}</div>`:''}
         ${plano.observacoesGerais?`<div style="margin-top:6px; color:var(--muted);">${escapeHtml(plano.observacoesGerais)}</div>`:''}
       </div>` : ''}
-    ${refeicoes.length ? refeicoes.map(ref=>`
+    ${refeicoesHoje.length ? refeicoesHoje.map(ref=>`
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
           <div style="font-weight:700;">${escapeHtml(ref.nome)}</div>
@@ -1138,8 +1184,30 @@ async function renderAlunoPlano(c){
           <div style="font-size:13px; padding:4px 0; border-top:1px solid var(--border);">${escapeHtml(al.nome)} — ${escapeHtml(String(al.quantidade||''))}${escapeHtml(al.unidade||'')}</div>
         `).join('')}
         ${ref.obs?`<div style="font-size:12px; color:var(--muted); margin-top:6px;">${escapeHtml(ref.obs)}</div>`:''}
+        <button class="btn btn-accent" style="width:100%; margin-top:12px;" onclick="confirmarRefeicao('${ref.id}')">✅ Marcar refeição como feita</button>
       </div>
-    `).join('') : '<div class="card" style="text-align:center; color:var(--muted);">Seu personal ainda não montou sua dieta</div>'}
+    `).join('') : (refeicoesConcluidasHoje.length ? '<div class="card" style="text-align:center; color:var(--muted);">Todas as refeições de hoje já foram confirmadas 🎉</div>' : '<div class="card" style="text-align:center; color:var(--muted);">Nenhuma refeição prevista para hoje</div>')}
+    ${refeicoesConcluidasHoje.length ? `
+      <div style="margin-top:10px; font-size:12px; color:var(--muted);">
+        ✅ Já confirmadas hoje: ${refeicoesConcluidasHoje.map(r=>`<a href="javascript:void(0)" onclick="desfazerRefeicao('${r.id}')" style="color:var(--muted); text-decoration:underline;">${escapeHtml(r.nome)}</a>`).join(', ')}
+      </div>
+    ` : ''}
+    ${outrasRefeicoes.length ? `
+      <h3 style="font-size:13px; margin:18px 0 8px; color:var(--muted);">Outras refeições do plano</h3>
+      ${outrasRefeicoes.map(ref=>`
+        <div class="card" style="margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <div style="font-weight:700;">${escapeHtml(ref.nome)}</div>
+            <span class="pill pill-gray">${ref.horario||''}</span>
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">${escapeHtml(labelRepeticao(ref))}</div>
+          ${(ref.alimentos||[]).map(al=>`
+            <div style="font-size:13px; padding:4px 0; border-top:1px solid var(--border);">${escapeHtml(al.nome)} — ${escapeHtml(String(al.quantidade||''))}${escapeHtml(al.unidade||'')}</div>
+          `).join('')}
+          ${ref.obs?`<div style="font-size:12px; color:var(--muted); margin-top:6px;">${escapeHtml(ref.obs)}</div>`:''}
+        </div>
+      `).join('')}
+    ` : ''}
   `;
 }
 async function toggleCheckin(diaId, exId, el){
@@ -1155,6 +1223,35 @@ async function toggleCheckin(diaId, exId, el){
     if(done) atual.add(exId); else atual.delete(exId);
     await docRef.update({exerciciosFeitos: Array.from(atual)});
   }
+}
+async function confirmarRefeicao(refId){
+  try{
+    const ref = db.collection('alunos').doc(currentAlunoDoc.id).collection('checkins');
+    const snap = await ref.where('dataStr','==', todayStr()).limit(1).get();
+    if(snap.empty){
+      await ref.add({dataStr: todayStr(), data: new Date(), refeicoesFeitas: [refId]});
+    } else {
+      const docRef = snap.docs[0].ref;
+      const atual = new Set(snap.docs[0].data().refeicoesFeitas||[]);
+      atual.add(refId);
+      await docRef.update({refeicoesFeitas: Array.from(atual)});
+    }
+    toast('Refeição confirmada 🥗','ok');
+    renderAlunoPlano(document.getElementById('aluno-content'));
+  }catch(err){ toast(err.message,'err'); }
+}
+async function desfazerRefeicao(refId){
+  try{
+    const ref = db.collection('alunos').doc(currentAlunoDoc.id).collection('checkins');
+    const snap = await ref.where('dataStr','==', todayStr()).limit(1).get();
+    if(!snap.empty){
+      const docRef = snap.docs[0].ref;
+      const atual = new Set(snap.docs[0].data().refeicoesFeitas||[]);
+      atual.delete(refId);
+      await docRef.update({refeicoesFeitas: Array.from(atual)});
+      renderAlunoPlano(document.getElementById('aluno-content'));
+    }
+  }catch(err){ toast(err.message,'err'); }
 }
 async function concluirTreino(diaId, nomeTreino, idsExercicios){
   try{
