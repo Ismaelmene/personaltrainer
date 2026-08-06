@@ -647,18 +647,49 @@ function renderPlanoConteudo(){
   renderTreinoDias();
   renderRefeicoes();
 }
+const DIAS_SEMANA_LISTA = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
+function diaAplicaHoje(dia){
+  const hojeNome = DIAS_SEMANA_LISTA_COM_DOMINGO()[new Date().getDay()];
+  if(dia.tipoRepeticao==='periodo' && dia.dataInicio && dia.dataFim){
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const ini = new Date(dia.dataInicio+'T00:00:00');
+    const fim = new Date(dia.dataFim+'T23:59:59');
+    return hoje >= ini && hoje <= fim;
+  }
+  const lista = (dia.diasSemana && dia.diasSemana.length) ? dia.diasSemana : (dia.diaSemana ? [dia.diaSemana] : []);
+  return lista.includes(hojeNome);
+}
+function DIAS_SEMANA_LISTA_COM_DOMINGO(){ return ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']; }
 function renderTreinoDias(){
   const wrap = document.getElementById('treino-dias-wrap');
   const dias = semanaAtual().dias;
   if(!dias.length){ wrap.innerHTML = '<div class="card" style="text-align:center; color:var(--muted);">Nenhum dia de treino cadastrado</div>'; return; }
-  wrap.innerHTML = dias.map((dia, di)=>`
+  wrap.innerHTML = dias.map((dia, di)=>{
+    const tipo = dia.tipoRepeticao || 'dias_semana';
+    const diasSel = dia.diasSemana || (dia.diaSemana ? [dia.diaSemana] : []);
+    return `
     <div class="card" style="margin-bottom:12px;">
       <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
-        <select onchange="semanaAtual().dias[${di}].diaSemana=this.value" style="max-width:160px;">
-          ${['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'].map(d=>`<option ${dia.diaSemana===d?'selected':''}>${d}</option>`).join('')}
-        </select>
         <input placeholder="Nome do treino (Ex: Treino A - Peito/Tríceps)" value="${escapeHtml(dia.nomeTreino||'')}" oninput="semanaAtual().dias[${di}].nomeTreino=this.value" style="flex:1; min-width:200px;">
         <button class="btn btn-danger btn-sm" onclick="removeDiaTreino(${di})">Remover dia</button>
+      </div>
+      <div style="margin-bottom:10px;">
+        <label class="label">Repetir por</label>
+        <div style="display:flex; gap:6px; margin-bottom:8px;">
+          <button class="tab-btn ${tipo==='dias_semana'?'active':''}" onclick="setDiaTipoRepeticao(${di},'dias_semana')">Dias da semana</button>
+          <button class="tab-btn ${tipo==='periodo'?'active':''}" onclick="setDiaTipoRepeticao(${di},'periodo')">Período de datas</button>
+        </div>
+        ${tipo==='dias_semana' ? `
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            ${DIAS_SEMANA_LISTA.map(d=>`<button class="tab-btn ${diasSel.includes(d)?'active':''}" onclick="toggleDiaSemanaChip(${di},'${d}')">${d.slice(0,3)}</button>`).join('')}
+          </div>
+        ` : `
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <div><label class="label">De</label><input type="date" value="${dia.dataInicio||''}" oninput="semanaAtual().dias[${di}].dataInicio=this.value" style="max-width:160px;"></div>
+            <div><label class="label">Até</label><input type="date" value="${dia.dataFim||''}" oninput="semanaAtual().dias[${di}].dataFim=this.value" style="max-width:160px;"></div>
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-top:4px;">Esse treino vale todo dia dentro do período selecionado.</div>
+        `}
       </div>
       <div class="exercise-row" style="font-size:11px; color:var(--muted); font-weight:600;">
         <div>Exercício</div><div>Séries</div><div>Reps</div><div>Carga</div><div>Desc.</div><div>Obs</div><div></div>
@@ -676,9 +707,23 @@ function renderTreinoDias(){
       `).join('')}
       <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="addExercicio(${di})">+ Exercício</button>
     </div>
-  `).join('');
+  `;}).join('');
 }
-function addDiaTreino(){ semanaAtual().dias.push({id:uid(), diaSemana:'Segunda', nomeTreino:'', exercicios:[]}); renderTreinoDias(); }
+function setDiaTipoRepeticao(di, tipo){
+  const dia = semanaAtual().dias[di];
+  dia.tipoRepeticao = tipo;
+  if(tipo==='dias_semana' && !dia.diasSemana) dia.diasSemana = dia.diaSemana ? [dia.diaSemana] : [];
+  if(tipo==='periodo'){ if(!dia.dataInicio) dia.dataInicio=''; if(!dia.dataFim) dia.dataFim=''; }
+  renderTreinoDias();
+}
+function toggleDiaSemanaChip(di, diaNome){
+  const dia = semanaAtual().dias[di];
+  if(!dia.diasSemana) dia.diasSemana = [];
+  const idx = dia.diasSemana.indexOf(diaNome);
+  if(idx>=0) dia.diasSemana.splice(idx,1); else dia.diasSemana.push(diaNome);
+  renderTreinoDias();
+}
+function addDiaTreino(){ semanaAtual().dias.push({id:uid(), tipoRepeticao:'dias_semana', diasSemana:[], dataInicio:'', dataFim:'', nomeTreino:'', exercicios:[]}); renderTreinoDias(); }
 function removeDiaTreino(di){ semanaAtual().dias.splice(di,1); renderTreinoDias(); }
 function addExercicio(di){ const d=semanaAtual().dias[di]; if(!d.exercicios) d.exercicios=[]; d.exercicios.push({id:uid(), nome:'',series:'',reps:'',carga:'',descanso:'',obs:''}); renderTreinoDias(); }
 function removeExercicio(di,ei){ semanaAtual().dias[di].exercicios.splice(ei,1); renderTreinoDias(); }
@@ -798,12 +843,18 @@ async function renderTabProgresso(box, aluno){
   box.innerHTML = '<div class="spinner"></div>';
   const snap = await db.collection('alunos').doc(selectedAlunoId).collection('progresso').orderBy('data','asc').get();
   const regs = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  const checkSnap = await db.collection('alunos').doc(selectedAlunoId).collection('checkins').orderBy('data','desc').limit(40).get();
+  let treinosFeitos = [];
+  checkSnap.docs.forEach(d=>{
+    const data = d.data();
+    (data.treinosConcluidos||[]).forEach(t=>treinosFeitos.push({...t, dataStr:data.dataStr}));
+  });
   box.innerHTML = `
     <div class="card" style="margin-bottom:16px;"><canvas id="chart-peso" height="90"></canvas></div>
     <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
       <button class="btn btn-accent btn-sm" onclick="openNovaMedidaModal()">+ Novo registro</button>
     </div>
-    <div style="display:flex; flex-direction:column; gap:8px;">
+    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
       ${regs.slice().reverse().map(r=>`
         <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
           <div style="font-size:13px;">
@@ -812,6 +863,15 @@ async function renderTabProgresso(box, aluno){
           </div>
         </div>
       `).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhum registro ainda</div>'}
+    </div>
+    <h3 style="font-size:14px; margin-bottom:10px;">✅ Treinos concluídos</h3>
+    <div style="display:flex; flex-direction:column; gap:6px;">
+      ${treinosFeitos.length ? treinosFeitos.map(t=>`
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px;">
+          <div style="font-size:13px;"><b>${escapeHtml(t.nome)}</b></div>
+          <span class="pill pill-green">${t.dataStr.split('-').reverse().join('/')}</span>
+        </div>
+      `).join('') : '<div class="card" style="text-align:center; color:var(--muted);">Nenhum treino concluído ainda</div>'}
     </div>
   `;
   const ctx = document.getElementById('chart-peso');
@@ -999,6 +1059,11 @@ async function renderAlunoView(){
 
 let alunoSemanaAtiva = null;
 function calcSemanaAtualIndex(qtd){ const dia = new Date().getDate(); return Math.min(Math.floor((dia-1)/7), qtd-1); }
+function labelRepeticao(dia){
+  if(dia.tipoRepeticao==='periodo' && dia.dataInicio && dia.dataFim) return `${fmtDate(new Date(dia.dataInicio+'T00:00:00'))} até ${fmtDate(new Date(dia.dataFim+'T00:00:00'))}`;
+  const lista = dia.diasSemana || (dia.diaSemana?[dia.diaSemana]:[]);
+  return lista.join(', ') || 'Sem dia definido';
+}
 async function renderAlunoPlano(c){
   const plano = migrarPlanoLegado(currentAlunoDoc);
   const semanas = plano.semanas && plano.semanas.length ? plano.semanas : [{numero:1, dias:[], refeicoes:[]}];
@@ -1009,8 +1074,38 @@ async function renderAlunoPlano(c){
   const hoje = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][new Date().getDay()];
   const checkSnap = await db.collection('alunos').doc(currentAlunoDoc.id).collection('checkins').where('dataStr','==', todayStr()).get();
   const feitosHoje = new Set();
-  checkSnap.docs.forEach(d => (d.data().exerciciosFeitos||[]).forEach(id=>feitosHoje.add(id)));
+  let treinosConcluidosHoje = [];
+  checkSnap.docs.forEach(d => { const data = d.data(); (data.exerciciosFeitos||[]).forEach(id=>feitosHoje.add(id)); treinosConcluidosHoje = data.treinosConcluidos||[]; });
   const refeicoes = (sem.refeicoes||[]).slice().sort((a,b)=>(a.horario||'').localeCompare(b.horario||''));
+  const todosDias = sem.dias || [];
+  const diasHoje = todosDias.filter(diaAplicaHoje);
+  const outrosDias = todosDias.filter(d=>!diaAplicaHoje(d));
+
+  const cardTreino = (dia, ehHoje) => {
+    const idsExercicios = (dia.exercicios||[]).map(e=>e.id);
+    const concluido = treinosConcluidosHoje.some(t=>t.id===dia.id);
+    return `
+    <div class="card" style="margin-bottom:14px; ${ehHoje?'border-color:var(--accent);':''}">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <div style="font-weight:700;">${escapeHtml(dia.nomeTreino||'Treino')}</div>
+        ${ehHoje ? '<span class="pill pill-green">Hoje</span>' : ''}
+      </div>
+      <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">${escapeHtml(labelRepeticao(dia))}</div>
+      ${(dia.exercicios||[]).map(ex=>`
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
+          <div class="check-circle ${feitosHoje.has(ex.id)?'done':''}" onclick="toggleCheckin('${dia.id}','${ex.id}', this)"></div>
+          <div style="flex:1;">
+            <div style="font-weight:600; font-size:14px;">${escapeHtml(ex.nome)}</div>
+            <div style="font-size:12px; color:var(--muted);">${ex.series||'-'}x${ex.reps||'-'} · ${ex.carga||'-'}kg · desc ${ex.descanso||'-'} ${ex.obs?'· '+escapeHtml(ex.obs):''}</div>
+          </div>
+        </div>
+      `).join('') || '<div style="color:var(--muted); font-size:13px;">Sem exercícios cadastrados</div>'}
+      ${ehHoje && idsExercicios.length ? `
+        <button class="btn ${concluido?'btn-ghost':'btn-accent'}" style="width:100%; margin-top:12px;" ${concluido?'disabled':''} onclick="concluirTreino('${dia.id}','${escapeHtml(dia.nomeTreino||'Treino').replace(/'/g,"\\'")}', ${JSON.stringify(idsExercicios).replace(/"/g,'&quot;')})">
+          ${concluido? '✅ Treino concluído hoje' : '✅ Concluir treino de hoje'}
+        </button>` : ''}
+    </div>`;
+  };
 
   c.innerHTML = `
     <h2 style="font-size:19px; margin-bottom:4px;">Meu treino & dieta</h2>
@@ -1019,24 +1114,12 @@ async function renderAlunoPlano(c){
       <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;">
         ${semanas.map((s,i)=>`<button class="tab-btn ${alunoSemanaAtiva===i?'active':''}" onclick="alunoSemanaAtiva=${i}; renderAlunoPlano(document.getElementById('aluno-content'))">Semana ${s.numero}</button>`).join('')}
       </div>` : ''}
-    <h3 style="font-size:14px; margin-bottom:8px;">🏋️ Treino</h3>
-    ${sem.dias && sem.dias.length ? sem.dias.map(dia=>`
-      <div class="card" style="margin-bottom:14px; ${dia.diaSemana===hoje?'border-color:var(--accent);':''}">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <div style="font-weight:700;">${escapeHtml(dia.diaSemana)} — ${escapeHtml(dia.nomeTreino||'Treino')}</div>
-          ${dia.diaSemana===hoje ? '<span class="pill pill-green">Hoje</span>' : ''}
-        </div>
-        ${(dia.exercicios||[]).map(ex=>`
-          <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
-            <div class="check-circle ${feitosHoje.has(ex.id)?'done':''}" onclick="toggleCheckin('${dia.id}','${ex.id}', this)"></div>
-            <div style="flex:1;">
-              <div style="font-weight:600; font-size:14px;">${escapeHtml(ex.nome)}</div>
-              <div style="font-size:12px; color:var(--muted);">${ex.series||'-'}x${ex.reps||'-'} · ${ex.carga||'-'}kg · desc ${ex.descanso||'-'} ${ex.obs?'· '+escapeHtml(ex.obs):''}</div>
-            </div>
-          </div>
-        `).join('') || '<div style="color:var(--muted); font-size:13px;">Sem exercícios cadastrados</div>'}
-      </div>
-    `).join('') : '<div class="card" style="text-align:center; color:var(--muted); margin-bottom:14px;">Seu personal ainda não montou seu treino</div>'}
+    <h3 style="font-size:14px; margin-bottom:8px;">🏋️ Treino de hoje</h3>
+    ${diasHoje.length ? diasHoje.map(dia=>cardTreino(dia,true)).join('') : '<div class="card" style="text-align:center; color:var(--muted); margin-bottom:14px;">Nenhum treino previsto para hoje</div>'}
+    ${outrosDias.length ? `
+      <h3 style="font-size:13px; margin:18px 0 8px; color:var(--muted);">Outros treinos do plano</h3>
+      ${outrosDias.map(dia=>cardTreino(dia,false)).join('')}
+    ` : ''}
 
     <h3 style="font-size:14px; margin:18px 0 8px;">🥗 Dieta</h3>
     ${plano.caloriasAlvo || plano.restricoes ? `
@@ -1072,6 +1155,29 @@ async function toggleCheckin(diaId, exId, el){
     if(done) atual.add(exId); else atual.delete(exId);
     await docRef.update({exerciciosFeitos: Array.from(atual)});
   }
+}
+async function concluirTreino(diaId, nomeTreino, idsExercicios){
+  try{
+    const ref = db.collection('alunos').doc(currentAlunoDoc.id).collection('checkins');
+    const snap = await ref.where('dataStr','==', todayStr()).limit(1).get();
+    if(snap.empty){
+      await ref.add({
+        dataStr: todayStr(), data: new Date(),
+        exerciciosFeitos: idsExercicios,
+        treinosConcluidos: [{id:diaId, nome:nomeTreino, concluidoEm: new Date().toISOString()}]
+      });
+    } else {
+      const docRef = snap.docs[0].ref;
+      const docData = snap.docs[0].data();
+      const atualFeitos = new Set(docData.exerciciosFeitos||[]);
+      idsExercicios.forEach(id=>atualFeitos.add(id));
+      const treinosConcl = docData.treinosConcluidos || [];
+      if(!treinosConcl.some(t=>t.id===diaId)) treinosConcl.push({id:diaId, nome:nomeTreino, concluidoEm: new Date().toISOString()});
+      await docRef.update({exerciciosFeitos: Array.from(atualFeitos), treinosConcluidos: treinosConcl});
+    }
+    toast('Treino concluído! Registrado no seu progresso 💪','ok');
+    renderAlunoPlano(document.getElementById('aluno-content'));
+  }catch(err){ toast(err.message,'err'); }
 }
 
 function renderAlunoProgresso(c){ renderTabProgresso(c, currentAlunoDoc); }
