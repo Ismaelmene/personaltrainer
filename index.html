@@ -16,7 +16,7 @@
 :root{
   --bg:#0F1115; --surface:#171A21; --surface2:#20242E; --surface3:#282D3A;
   --border:#2A2F3A; --text:#F2F3F5; --muted:#8B92A0; --muted2:#5C6270;
-  --accent:#C6FF3D; --accent-dark:#9FD82B; --accent-ink:#10140A;
+  --accent:#FF3B30; --accent-dark:#D42A21; --accent-ink:#FFFFFF;
   --orange:#FF7A45; --danger:#FF5C5C; --success:#3DDC97;
   --radius:14px; --radius-sm:9px;
 }
@@ -132,8 +132,7 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--accent)
   </div>
   <div id="aluno-content" style="padding:20px; max-width:700px; margin:0 auto;"></div>
   <div style="position:fixed; bottom:0; left:0; right:0; background:var(--surface); border-top:1px solid var(--border); display:flex; padding:8px; gap:4px; z-index:30;">
-    <div class="nav-item aluno-tab active" data-view="treino" onclick="goAlunoView('treino')" style="flex:1; flex-direction:column; text-align:center; font-size:11px;">🏋️<br>Treino</div>
-    <div class="nav-item aluno-tab" data-view="dieta" onclick="goAlunoView('dieta')" style="flex:1; flex-direction:column; text-align:center; font-size:11px;">🥗<br>Dieta</div>
+    <div class="nav-item aluno-tab active" data-view="treino" onclick="goAlunoView('treino')" style="flex:1; flex-direction:column; text-align:center; font-size:11px;">🏋️🥗<br>Treino/Dieta</div>
     <div class="nav-item aluno-tab" data-view="progresso" onclick="goAlunoView('progresso')" style="flex:1; flex-direction:column; text-align:center; font-size:11px;">📈<br>Progresso</div>
     <div class="nav-item aluno-tab" data-view="financeiro" onclick="goAlunoView('financeiro')" style="flex:1; flex-direction:column; text-align:center; font-size:11px;">💰<br>Financeiro</div>
     <div class="nav-item aluno-tab" data-view="agenda" onclick="goAlunoView('agenda')" style="flex:1; flex-direction:column; text-align:center; font-size:11px;">📅<br>Agenda</div>
@@ -460,8 +459,8 @@ async function renderAlunoDetail(){
       <span class="pill ${aluno.ativo!==false?'pill-green':'pill-gray'}">${aluno.ativo!==false?'Ativo':'Inativo'}</span>
     </div>
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:14px;">
-      ${['perfil','treino','dieta','financeiro','progresso','agenda'].map(t=>`
-        <button class="tab-btn ${alunoDetailTab===t?'active':''}" onclick="switchAlunoTab('${t}')">${t.charAt(0).toUpperCase()+t.slice(1)}</button>
+      ${[['perfil','Perfil'],['treino','Treino & Dieta'],['financeiro','Financeiro'],['progresso','Progresso'],['agenda','Agenda']].map(([t,label])=>`
+        <button class="tab-btn ${alunoDetailTab===t?'active':''}" onclick="switchAlunoTab('${t}')">${label}</button>
       `).join('')}
     </div>
     <div id="aluno-detail-tab-content"></div>
@@ -473,7 +472,6 @@ function renderAlunoDetailTab(aluno){
   const box = document.getElementById('aluno-detail-tab-content');
   if(alunoDetailTab==='perfil') return renderTabPerfil(box, aluno);
   if(alunoDetailTab==='treino') return renderTabTreino(box, aluno);
-  if(alunoDetailTab==='dieta') return renderTabDieta(box, aluno);
   if(alunoDetailTab==='financeiro') return renderTabFinanceiro(box, aluno);
   if(alunoDetailTab==='progresso') return renderTabProgresso(box, aluno);
   if(alunoDetailTab==='agenda') return renderTabAgenda(box, aluno);
@@ -548,31 +546,118 @@ async function excluirAluno(){
   }catch(err){ toast(err.message,'err'); }
 }
 
-/* --- TAB TREINO --- */
-let treinoEdit = null;
+/* --- TAB TREINO & DIETA (plano unificado) --- */
+let planoEdit = null;
+let planoSemanaAtiva = 0;
+function migrarPlanoLegado(aluno){
+  if(aluno.plano) return JSON.parse(JSON.stringify(aluno.plano));
+  // migra dados antigos (treino/dieta separados) para o formato novo, se existirem
+  return {
+    tipo: 'semanal',
+    restricoes: aluno.dieta?.restricoes || '',
+    caloriasAlvo: aluno.dieta?.caloriasAlvo || '',
+    observacoesGerais: aluno.dieta?.observacoesGerais || '',
+    updatedAt: aluno.treino?.updatedAt || aluno.dieta?.updatedAt || null,
+    semanas: [{ numero:1, dias: aluno.treino?.dias || [], refeicoes: aluno.dieta?.refeicoes || [] }]
+  };
+}
 function renderTabTreino(box, aluno){
-  treinoEdit = JSON.parse(JSON.stringify(aluno.treino || {dias:[]}));
-  if(!treinoEdit.dias) treinoEdit.dias = [];
+  planoEdit = migrarPlanoLegado(aluno);
+  if(!planoEdit.semanas || !planoEdit.semanas.length) planoEdit.semanas = [{numero:1, dias:[], refeicoes:[]}];
+  planoSemanaAtiva = 0;
   box.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-      <div style="font-size:12px; color:var(--muted);">Última atualização: ${aluno.treino?.updatedAt ? fmtDate(aluno.treino.updatedAt) : 'nunca'}</div>
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div>
+          <label class="label">Periodicidade do plano</label>
+          <select id="pl-tipo" onchange="setPlanoTipo(this.value)">
+            <option value="semanal" ${planoEdit.tipo!=='mensal'?'selected':''}>Semanal (repete toda semana)</option>
+            <option value="mensal" ${planoEdit.tipo==='mensal'?'selected':''}>Mensal (semana a semana)</option>
+          </select>
+        </div>
+        <div><label class="label">Meta calórica diária (kcal)</label><input id="pl-calorias" value="${escapeHtml(String(planoEdit.caloriasAlvo||''))}" placeholder="Ex: 2400"></div>
+        <div><label class="label">Restrições / alergias</label><input id="pl-restricoes" value="${escapeHtml(planoEdit.restricoes||'')}" placeholder="Ex: intolerância à lactose"></div>
+        <div><label class="label">Observações gerais da dieta</label><input id="pl-obs" value="${escapeHtml(planoEdit.observacoesGerais||'')}" placeholder="Orientações gerais"></div>
+      </div>
+    </div>
+    <div id="plano-semanas-tabs"></div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0;">
+      <div style="font-size:12px; color:var(--muted);">Última atualização: ${planoEdit.updatedAt ? fmtDate(planoEdit.updatedAt) : 'nunca'}</div>
+    </div>
+    <div id="plano-conteudo-wrap"></div>
+    <button class="btn btn-accent" style="margin-top:16px;" onclick="salvarPlano()">Salvar treino e dieta</button>
+  `;
+  renderPlanoSemanasTabs();
+  renderPlanoConteudo();
+}
+function setPlanoTipo(val){
+  planoEdit.tipo = val;
+  if(val==='semanal'){ planoEdit.semanas = [planoEdit.semanas[0]]; planoSemanaAtiva = 0; }
+  renderPlanoSemanasTabs();
+  renderPlanoConteudo();
+}
+function renderPlanoSemanasTabs(){
+  const wrap = document.getElementById('plano-semanas-tabs');
+  if(planoEdit.tipo!=='mensal'){ wrap.innerHTML=''; return; }
+  wrap.innerHTML = `
+    <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
+      ${planoEdit.semanas.map((s,i)=>`
+        <button class="tab-btn ${planoSemanaAtiva===i?'active':''}" onclick="trocarSemana(${i})">Semana ${s.numero}</button>
+      `).join('')}
+      <button class="btn btn-ghost btn-sm" onclick="addSemana()">+ Semana</button>
+      ${planoEdit.semanas.length>1 ? `<button class="btn btn-ghost btn-sm" onclick="removeSemana(${planoSemanaAtiva})">Remover semana atual</button>` : ''}
+      ${planoEdit.semanas.length>1 ? `<button class="btn btn-accent btn-sm" onclick="duplicarSemana1()">Repetir semana 1 nas demais</button>` : ''}
+    </div>
+  `;
+}
+function trocarSemana(i){ planoSemanaAtiva = i; renderPlanoSemanasTabs(); renderPlanoConteudo(); }
+function addSemana(){ planoEdit.semanas.push({numero: planoEdit.semanas.length+1, dias:[], refeicoes:[]}); planoSemanaAtiva = planoEdit.semanas.length-1; renderPlanoSemanasTabs(); renderPlanoConteudo(); }
+function removeSemana(i){
+  if(planoEdit.semanas.length<=1) return;
+  planoEdit.semanas.splice(i,1);
+  planoEdit.semanas.forEach((s,idx)=>s.numero=idx+1);
+  planoSemanaAtiva = Math.max(0, i-1);
+  renderPlanoSemanasTabs(); renderPlanoConteudo();
+}
+function duplicarSemana1(){
+  const base = planoEdit.semanas[0];
+  for(let i=1;i<planoEdit.semanas.length;i++){
+    planoEdit.semanas[i].dias = JSON.parse(JSON.stringify(base.dias)).map(d=>({...d, id:uid(), exercicios:(d.exercicios||[]).map(e=>({...e, id:uid()}))}));
+    planoEdit.semanas[i].refeicoes = JSON.parse(JSON.stringify(base.refeicoes)).map(r=>({...r, id:uid(), alimentos:(r.alimentos||[]).map(a=>({...a, id:uid()}))}));
+  }
+  toast('Semana 1 replicada para as demais','ok');
+  renderPlanoConteudo();
+}
+function semanaAtual(){ return planoEdit.semanas[planoSemanaAtiva]; }
+function renderPlanoConteudo(){
+  const wrap = document.getElementById('plano-conteudo-wrap');
+  const sem = semanaAtual();
+  wrap.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="font-size:14px; margin:0;">🏋️ Treino ${planoEdit.tipo==='mensal'?'— Semana '+sem.numero:''}</h3>
       <button class="btn btn-accent btn-sm" onclick="addDiaTreino()">+ Adicionar dia de treino</button>
     </div>
     <div id="treino-dias-wrap"></div>
-    <button class="btn btn-accent" style="margin-top:16px;" onclick="salvarTreino()">Salvar treino</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:20px 0 10px;">
+      <h3 style="font-size:14px; margin:0;">🥗 Dieta ${planoEdit.tipo==='mensal'?'— Semana '+sem.numero:''}</h3>
+      <button class="btn btn-accent btn-sm" onclick="addRefeicao()">+ Adicionar refeição</button>
+    </div>
+    <div id="dieta-refeicoes-wrap"></div>
   `;
   renderTreinoDias();
+  renderRefeicoes();
 }
 function renderTreinoDias(){
   const wrap = document.getElementById('treino-dias-wrap');
-  if(!treinoEdit.dias.length){ wrap.innerHTML = '<div class="card" style="text-align:center; color:var(--muted);">Nenhum dia de treino cadastrado</div>'; return; }
-  wrap.innerHTML = treinoEdit.dias.map((dia, di)=>`
+  const dias = semanaAtual().dias;
+  if(!dias.length){ wrap.innerHTML = '<div class="card" style="text-align:center; color:var(--muted);">Nenhum dia de treino cadastrado</div>'; return; }
+  wrap.innerHTML = dias.map((dia, di)=>`
     <div class="card" style="margin-bottom:12px;">
       <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
-        <select onchange="treinoEdit.dias[${di}].diaSemana=this.value" style="max-width:160px;">
+        <select onchange="semanaAtual().dias[${di}].diaSemana=this.value" style="max-width:160px;">
           ${['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'].map(d=>`<option ${dia.diaSemana===d?'selected':''}>${d}</option>`).join('')}
         </select>
-        <input placeholder="Nome do treino (Ex: Treino A - Peito/Tríceps)" value="${escapeHtml(dia.nomeTreino||'')}" oninput="treinoEdit.dias[${di}].nomeTreino=this.value" style="flex:1; min-width:200px;">
+        <input placeholder="Nome do treino (Ex: Treino A - Peito/Tríceps)" value="${escapeHtml(dia.nomeTreino||'')}" oninput="semanaAtual().dias[${di}].nomeTreino=this.value" style="flex:1; min-width:200px;">
         <button class="btn btn-danger btn-sm" onclick="removeDiaTreino(${di})">Remover dia</button>
       </div>
       <div class="exercise-row" style="font-size:11px; color:var(--muted); font-weight:600;">
@@ -580,12 +665,12 @@ function renderTreinoDias(){
       </div>
       ${(dia.exercicios||[]).map((ex,ei)=>`
         <div class="exercise-row">
-          <input value="${escapeHtml(ex.nome||'')}" placeholder="Ex: Supino reto" oninput="treinoEdit.dias[${di}].exercicios[${ei}].nome=this.value">
-          <input value="${escapeHtml(ex.series||'')}" placeholder="4" oninput="treinoEdit.dias[${di}].exercicios[${ei}].series=this.value">
-          <input value="${escapeHtml(ex.reps||'')}" placeholder="10" oninput="treinoEdit.dias[${di}].exercicios[${ei}].reps=this.value">
-          <input value="${escapeHtml(ex.carga||'')}" placeholder="kg" oninput="treinoEdit.dias[${di}].exercicios[${ei}].carga=this.value">
-          <input value="${escapeHtml(ex.descanso||'')}" placeholder="60s" oninput="treinoEdit.dias[${di}].exercicios[${ei}].descanso=this.value">
-          <input value="${escapeHtml(ex.obs||'')}" placeholder="obs" oninput="treinoEdit.dias[${di}].exercicios[${ei}].obs=this.value">
+          <input value="${escapeHtml(ex.nome||'')}" placeholder="Ex: Supino reto" oninput="semanaAtual().dias[${di}].exercicios[${ei}].nome=this.value">
+          <input value="${escapeHtml(ex.series||'')}" placeholder="4" oninput="semanaAtual().dias[${di}].exercicios[${ei}].series=this.value">
+          <input value="${escapeHtml(ex.reps||'')}" placeholder="10" oninput="semanaAtual().dias[${di}].exercicios[${ei}].reps=this.value">
+          <input value="${escapeHtml(ex.carga||'')}" placeholder="kg" oninput="semanaAtual().dias[${di}].exercicios[${ei}].carga=this.value">
+          <input value="${escapeHtml(ex.descanso||'')}" placeholder="60s" oninput="semanaAtual().dias[${di}].exercicios[${ei}].descanso=this.value">
+          <input value="${escapeHtml(ex.obs||'')}" placeholder="obs" oninput="semanaAtual().dias[${di}].exercicios[${ei}].obs=this.value">
           <button class="btn btn-ghost btn-sm" onclick="removeExercicio(${di},${ei})">✕</button>
         </div>
       `).join('')}
@@ -593,48 +678,20 @@ function renderTreinoDias(){
     </div>
   `).join('');
 }
-function addDiaTreino(){ treinoEdit.dias.push({id:uid(), diaSemana:'Segunda', nomeTreino:'', exercicios:[]}); renderTreinoDias(); }
-function removeDiaTreino(di){ treinoEdit.dias.splice(di,1); renderTreinoDias(); }
-function addExercicio(di){ if(!treinoEdit.dias[di].exercicios) treinoEdit.dias[di].exercicios=[]; treinoEdit.dias[di].exercicios.push({id:uid(), nome:'',series:'',reps:'',carga:'',descanso:'',obs:''}); renderTreinoDias(); }
-function removeExercicio(di,ei){ treinoEdit.dias[di].exercicios.splice(ei,1); renderTreinoDias(); }
-async function salvarTreino(){
-  try{
-    treinoEdit.updatedAt = firebase.firestore.Timestamp.now();
-    await db.collection('alunos').doc(selectedAlunoId).update({treino: treinoEdit});
-    toast('Treino salvo com sucesso','ok');
-  }catch(err){ toast(err.message,'err'); }
-}
+function addDiaTreino(){ semanaAtual().dias.push({id:uid(), diaSemana:'Segunda', nomeTreino:'', exercicios:[]}); renderTreinoDias(); }
+function removeDiaTreino(di){ semanaAtual().dias.splice(di,1); renderTreinoDias(); }
+function addExercicio(di){ const d=semanaAtual().dias[di]; if(!d.exercicios) d.exercicios=[]; d.exercicios.push({id:uid(), nome:'',series:'',reps:'',carga:'',descanso:'',obs:''}); renderTreinoDias(); }
+function removeExercicio(di,ei){ semanaAtual().dias[di].exercicios.splice(ei,1); renderTreinoDias(); }
 
-/* --- TAB DIETA --- */
-let dietaEdit = null;
-function renderTabDieta(box, aluno){
-  dietaEdit = JSON.parse(JSON.stringify(aluno.dieta || {refeicoes:[], restricoes:'', observacoesGerais:'', caloriasAlvo:''}));
-  if(!dietaEdit.refeicoes) dietaEdit.refeicoes = [];
-  box.innerHTML = `
-    <div class="card" style="margin-bottom:14px;">
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-        <div><label class="label">Meta calórica diária (kcal)</label><input id="dt-calorias" value="${dietaEdit.caloriasAlvo||''}" placeholder="Ex: 2400"></div>
-        <div><label class="label">Restrições / alergias</label><input id="dt-restricoes" value="${escapeHtml(dietaEdit.restricoes||'')}" placeholder="Ex: intolerância à lactose"></div>
-        <div style="grid-column:1/-1;"><label class="label">Observações gerais</label><input id="dt-obs" value="${escapeHtml(dietaEdit.observacoesGerais||'')}" placeholder="Orientações gerais da dieta"></div>
-      </div>
-    </div>
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-      <div style="font-size:12px; color:var(--muted);">Última atualização: ${aluno.dieta?.updatedAt ? fmtDate(aluno.dieta.updatedAt) : 'nunca'}</div>
-      <button class="btn btn-accent btn-sm" onclick="addRefeicao()">+ Adicionar refeição</button>
-    </div>
-    <div id="dieta-refeicoes-wrap"></div>
-    <button class="btn btn-accent" style="margin-top:16px;" onclick="salvarDieta()">Salvar dieta</button>
-  `;
-  renderRefeicoes();
-}
 function renderRefeicoes(){
   const wrap = document.getElementById('dieta-refeicoes-wrap');
-  if(!dietaEdit.refeicoes.length){ wrap.innerHTML = '<div class="card" style="text-align:center; color:var(--muted);">Nenhuma refeição cadastrada</div>'; return; }
-  wrap.innerHTML = dietaEdit.refeicoes.map((ref, ri)=>`
+  const refeicoes = semanaAtual().refeicoes;
+  if(!refeicoes.length){ wrap.innerHTML = '<div class="card" style="text-align:center; color:var(--muted);">Nenhuma refeição cadastrada</div>'; return; }
+  wrap.innerHTML = refeicoes.map((ref, ri)=>`
     <div class="card" style="margin-bottom:12px;">
       <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
-        <input type="time" value="${ref.horario||''}" oninput="dietaEdit.refeicoes[${ri}].horario=this.value" style="max-width:120px;">
-        <input placeholder="Nome (Ex: Café da manhã)" value="${escapeHtml(ref.nome||'')}" oninput="dietaEdit.refeicoes[${ri}].nome=this.value" style="flex:1; min-width:180px;">
+        <input type="time" value="${ref.horario||''}" oninput="semanaAtual().refeicoes[${ri}].horario=this.value" style="max-width:120px;">
+        <input placeholder="Nome (Ex: Café da manhã)" value="${escapeHtml(ref.nome||'')}" oninput="semanaAtual().refeicoes[${ri}].nome=this.value" style="flex:1; min-width:180px;">
         <button class="btn btn-danger btn-sm" onclick="removeRefeicao(${ri})">Remover</button>
       </div>
       <div class="food-row" style="font-size:11px; color:var(--muted); font-weight:600;">
@@ -642,29 +699,30 @@ function renderRefeicoes(){
       </div>
       ${(ref.alimentos||[]).map((al,ai)=>`
         <div class="food-row">
-          <input value="${escapeHtml(al.nome||'')}" placeholder="Ex: Arroz integral" oninput="dietaEdit.refeicoes[${ri}].alimentos[${ai}].nome=this.value">
-          <input value="${escapeHtml(al.quantidade||'')}" placeholder="100" oninput="dietaEdit.refeicoes[${ri}].alimentos[${ai}].quantidade=this.value">
-          <input value="${escapeHtml(al.unidade||'')}" placeholder="g" oninput="dietaEdit.refeicoes[${ri}].alimentos[${ai}].unidade=this.value">
+          <input value="${escapeHtml(al.nome||'')}" placeholder="Ex: Arroz integral" oninput="semanaAtual().refeicoes[${ri}].alimentos[${ai}].nome=this.value">
+          <input value="${escapeHtml(al.quantidade||'')}" placeholder="100" oninput="semanaAtual().refeicoes[${ri}].alimentos[${ai}].quantidade=this.value">
+          <input value="${escapeHtml(al.unidade||'')}" placeholder="g" oninput="semanaAtual().refeicoes[${ri}].alimentos[${ai}].unidade=this.value">
           <button class="btn btn-ghost btn-sm" onclick="removeAlimento(${ri},${ai})">✕</button>
         </div>
       `).join('')}
-      <input placeholder="Observação da refeição (opcional)" value="${escapeHtml(ref.obs||'')}" oninput="dietaEdit.refeicoes[${ri}].obs=this.value" style="margin-top:6px;">
+      <input placeholder="Observação da refeição (opcional)" value="${escapeHtml(ref.obs||'')}" oninput="semanaAtual().refeicoes[${ri}].obs=this.value" style="margin-top:6px;">
       <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="addAlimento(${ri})">+ Alimento</button>
     </div>
   `).join('');
 }
-function addRefeicao(){ dietaEdit.refeicoes.push({id:uid(), horario:'', nome:'', alimentos:[], obs:''}); renderRefeicoes(); }
-function removeRefeicao(ri){ dietaEdit.refeicoes.splice(ri,1); renderRefeicoes(); }
-function addAlimento(ri){ if(!dietaEdit.refeicoes[ri].alimentos) dietaEdit.refeicoes[ri].alimentos=[]; dietaEdit.refeicoes[ri].alimentos.push({id:uid(), nome:'', quantidade:'', unidade:'g'}); renderRefeicoes(); }
-function removeAlimento(ri,ai){ dietaEdit.refeicoes[ri].alimentos.splice(ai,1); renderRefeicoes(); }
-async function salvarDieta(){
+function addRefeicao(){ semanaAtual().refeicoes.push({id:uid(), horario:'', nome:'', alimentos:[], obs:''}); renderRefeicoes(); }
+function removeRefeicao(ri){ semanaAtual().refeicoes.splice(ri,1); renderRefeicoes(); }
+function addAlimento(ri){ const r=semanaAtual().refeicoes[ri]; if(!r.alimentos) r.alimentos=[]; r.alimentos.push({id:uid(), nome:'', quantidade:'', unidade:'g'}); renderRefeicoes(); }
+function removeAlimento(ri,ai){ semanaAtual().refeicoes[ri].alimentos.splice(ai,1); renderRefeicoes(); }
+
+async function salvarPlano(){
   try{
-    dietaEdit.caloriasAlvo = document.getElementById('dt-calorias').value;
-    dietaEdit.restricoes = document.getElementById('dt-restricoes').value.trim();
-    dietaEdit.observacoesGerais = document.getElementById('dt-obs').value.trim();
-    dietaEdit.updatedAt = firebase.firestore.Timestamp.now();
-    await db.collection('alunos').doc(selectedAlunoId).update({dieta: dietaEdit});
-    toast('Dieta salva com sucesso','ok');
+    planoEdit.caloriasAlvo = document.getElementById('pl-calorias').value;
+    planoEdit.restricoes = document.getElementById('pl-restricoes').value.trim();
+    planoEdit.observacoesGerais = document.getElementById('pl-obs').value.trim();
+    planoEdit.updatedAt = firebase.firestore.Timestamp.now();
+    await db.collection('alunos').doc(selectedAlunoId).update({plano: planoEdit});
+    toast('Treino e dieta salvos com sucesso','ok');
   }catch(err){ toast(err.message,'err'); }
 }
 
@@ -760,7 +818,7 @@ async function renderTabProgresso(box, aluno){
   if(pesoChart) pesoChart.destroy();
   pesoChart = new Chart(ctx, {
     type:'line',
-    data:{ labels: regs.map(r=>fmtDate(r.data)), datasets:[{label:'Peso (kg)', data: regs.map(r=>r.peso), borderColor:'#C6FF3D', backgroundColor:'rgba(198,255,61,.1)', tension:.3, fill:true}] },
+    data:{ labels: regs.map(r=>fmtDate(r.data)), datasets:[{label:'Peso (kg)', data: regs.map(r=>r.peso), borderColor:'#FF3B30', backgroundColor:'rgba(255,59,48,.12)', tension:.3, fill:true}] },
     options:{ plugins:{legend:{labels:{color:'#8B92A0'}}}, scales:{ x:{ticks:{color:'#8B92A0'}, grid:{color:'#2A2F3A'}}, y:{ticks:{color:'#8B92A0'}, grid:{color:'#2A2F3A'}} } }
   });
 }
@@ -933,24 +991,36 @@ async function renderAlunoView(){
   selectedAlunoId = currentAlunoDoc.id;
   const c = document.getElementById('aluno-content');
   c.innerHTML = '<div class="spinner"></div>';
-  if(alunoView==='treino') renderAlunoTreino(c);
-  else if(alunoView==='dieta') renderAlunoDieta(c);
+  if(alunoView==='treino') renderAlunoPlano(c);
   else if(alunoView==='progresso') renderAlunoProgresso(c);
   else if(alunoView==='financeiro') renderAlunoFinanceiro(c);
   else if(alunoView==='agenda') renderAlunoAgenda(c);
 }
 
-async function renderAlunoTreino(c){
-  const dias = currentAlunoDoc.treino?.dias || [];
+let alunoSemanaAtiva = null;
+function calcSemanaAtualIndex(qtd){ const dia = new Date().getDate(); return Math.min(Math.floor((dia-1)/7), qtd-1); }
+async function renderAlunoPlano(c){
+  const plano = migrarPlanoLegado(currentAlunoDoc);
+  const semanas = plano.semanas && plano.semanas.length ? plano.semanas : [{numero:1, dias:[], refeicoes:[]}];
+  if(alunoSemanaAtiva===null || alunoSemanaAtiva>=semanas.length){
+    alunoSemanaAtiva = plano.tipo==='mensal' ? calcSemanaAtualIndex(semanas.length) : 0;
+  }
+  const sem = semanas[alunoSemanaAtiva];
   const hoje = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][new Date().getDay()];
   const checkSnap = await db.collection('alunos').doc(currentAlunoDoc.id).collection('checkins').where('dataStr','==', todayStr()).get();
   const feitosHoje = new Set();
   checkSnap.docs.forEach(d => (d.data().exerciciosFeitos||[]).forEach(id=>feitosHoje.add(id)));
+  const refeicoes = (sem.refeicoes||[]).slice().sort((a,b)=>(a.horario||'').localeCompare(b.horario||''));
 
   c.innerHTML = `
-    <h2 style="font-size:19px; margin-bottom:4px;">Meu treino</h2>
-    <div style="font-size:12px; color:var(--muted); margin-bottom:18px;">Hoje é ${hoje}</div>
-    ${dias.length ? dias.map(dia=>`
+    <h2 style="font-size:19px; margin-bottom:4px;">Meu treino & dieta</h2>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Hoje é ${hoje}</div>
+    ${plano.tipo==='mensal' ? `
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;">
+        ${semanas.map((s,i)=>`<button class="tab-btn ${alunoSemanaAtiva===i?'active':''}" onclick="alunoSemanaAtiva=${i}; renderAlunoPlano(document.getElementById('aluno-content'))">Semana ${s.numero}</button>`).join('')}
+      </div>` : ''}
+    <h3 style="font-size:14px; margin-bottom:8px;">🏋️ Treino</h3>
+    ${sem.dias && sem.dias.length ? sem.dias.map(dia=>`
       <div class="card" style="margin-bottom:14px; ${dia.diaSemana===hoje?'border-color:var(--accent);':''}">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
           <div style="font-weight:700;">${escapeHtml(dia.diaSemana)} — ${escapeHtml(dia.nomeTreino||'Treino')}</div>
@@ -966,7 +1036,27 @@ async function renderAlunoTreino(c){
           </div>
         `).join('') || '<div style="color:var(--muted); font-size:13px;">Sem exercícios cadastrados</div>'}
       </div>
-    `).join('') : '<div class="card" style="text-align:center; color:var(--muted);">Seu personal ainda não montou seu treino</div>'}
+    `).join('') : '<div class="card" style="text-align:center; color:var(--muted); margin-bottom:14px;">Seu personal ainda não montou seu treino</div>'}
+
+    <h3 style="font-size:14px; margin:18px 0 8px;">🥗 Dieta</h3>
+    ${plano.caloriasAlvo || plano.restricoes ? `
+      <div class="card" style="margin-bottom:14px; font-size:13px;">
+        ${plano.caloriasAlvo?`<div><b>Meta:</b> ${escapeHtml(String(plano.caloriasAlvo))} kcal/dia</div>`:''}
+        ${plano.restricoes?`<div><b>Restrições:</b> ${escapeHtml(plano.restricoes)}</div>`:''}
+        ${plano.observacoesGerais?`<div style="margin-top:6px; color:var(--muted);">${escapeHtml(plano.observacoesGerais)}</div>`:''}
+      </div>` : ''}
+    ${refeicoes.length ? refeicoes.map(ref=>`
+      <div class="card" style="margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <div style="font-weight:700;">${escapeHtml(ref.nome)}</div>
+          <span class="pill pill-gray">${ref.horario||''}</span>
+        </div>
+        ${(ref.alimentos||[]).map(al=>`
+          <div style="font-size:13px; padding:4px 0; border-top:1px solid var(--border);">${escapeHtml(al.nome)} — ${escapeHtml(String(al.quantidade||''))}${escapeHtml(al.unidade||'')}</div>
+        `).join('')}
+        ${ref.obs?`<div style="font-size:12px; color:var(--muted); margin-top:6px;">${escapeHtml(ref.obs)}</div>`:''}
+      </div>
+    `).join('') : '<div class="card" style="text-align:center; color:var(--muted);">Seu personal ainda não montou sua dieta</div>'}
   `;
 }
 async function toggleCheckin(diaId, exId, el){
@@ -984,31 +1074,6 @@ async function toggleCheckin(diaId, exId, el){
   }
 }
 
-function renderAlunoDieta(c){
-  const dieta = currentAlunoDoc.dieta || {};
-  const refeicoes = (dieta.refeicoes||[]).slice().sort((a,b)=>(a.horario||'').localeCompare(b.horario||''));
-  c.innerHTML = `
-    <h2 style="font-size:19px; margin-bottom:12px;">Minha dieta</h2>
-    ${dieta.caloriasAlvo || dieta.restricoes ? `
-      <div class="card" style="margin-bottom:14px; font-size:13px;">
-        ${dieta.caloriasAlvo?`<div><b>Meta:</b> ${escapeHtml(String(dieta.caloriasAlvo))} kcal/dia</div>`:''}
-        ${dieta.restricoes?`<div><b>Restrições:</b> ${escapeHtml(dieta.restricoes)}</div>`:''}
-        ${dieta.observacoesGerais?`<div style="margin-top:6px; color:var(--muted);">${escapeHtml(dieta.observacoesGerais)}</div>`:''}
-      </div>` : ''}
-    ${refeicoes.length ? refeicoes.map(ref=>`
-      <div class="card" style="margin-bottom:12px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-          <div style="font-weight:700;">${escapeHtml(ref.nome)}</div>
-          <span class="pill pill-gray">${ref.horario||''}</span>
-        </div>
-        ${(ref.alimentos||[]).map(al=>`
-          <div style="font-size:13px; padding:4px 0; border-top:1px solid var(--border);">${escapeHtml(al.nome)} — ${escapeHtml(String(al.quantidade||''))}${escapeHtml(al.unidade||'')}</div>
-        `).join('')}
-        ${ref.obs?`<div style="font-size:12px; color:var(--muted); margin-top:6px;">${escapeHtml(ref.obs)}</div>`:''}
-      </div>
-    `).join('') : '<div class="card" style="text-align:center; color:var(--muted);">Seu personal ainda não montou sua dieta</div>'}
-  `;
-}
 function renderAlunoProgresso(c){ renderTabProgresso(c, currentAlunoDoc); }
 function renderAlunoFinanceiro(c){ renderTabFinanceiro(c, currentAlunoDoc); }
 function renderAlunoAgenda(c){ renderTabAgenda(c, currentAlunoDoc); }
