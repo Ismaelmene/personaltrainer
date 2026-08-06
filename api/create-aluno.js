@@ -50,8 +50,14 @@ module.exports = async (req, res) => {
         valor: Number(mensalidadeValor) || 0,
         diaVencimento: Number(diaVencimento) || 5
       },
-      treino: { updatedAt: null, dias: [] },
-      dieta: { updatedAt: null, refeicoes: [], restricoes: '', observacoesGerais: '', caloriasAlvo: '' },
+      plano: {
+        tipo: 'semanal',
+        updatedAt: null,
+        restricoes: '',
+        observacoesGerais: '',
+        caloriasAlvo: '',
+        semanas: [{ numero: 1, dias: [], refeicoes: [] }]
+      },
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
