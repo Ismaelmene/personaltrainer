@@ -107,6 +107,7 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--accent)
     <div class="nav-item" data-view="alunos" onclick="goPersonalView('alunos')">👥 Alunos</div>
     <div class="nav-item" data-view="agenda" onclick="goPersonalView('agenda')">📅 Agenda</div>
     <div class="nav-item" data-view="financeiro" onclick="goPersonalView('financeiro')">💰 Financeiro</div>
+    <div id="nav-item-dev" class="hidden nav-item" data-view="dev" onclick="goPersonalView('dev')">🛠️ Painel Dev</div>
     <div style="flex:1;"></div>
     <div style="border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
       <div style="font-size:12px; color:var(--muted); padding:0 10px 10px;" id="personal-name-label"></div>
@@ -164,6 +165,68 @@ let alunoView = 'treino';
 let selectedAlunoId = null;
 let alunoDetailTab = 'perfil';
 let alunosListCache = [];
+let bibliotecaCache = [];
+const BIBLIOTECA_PADRAO = [
+  {nome:'Agachamento livre com barra', videoUrl:'https://www.youtube.com/watch?v=rM6SDUdl9fs'},
+  {nome:'Supino reto com barra', videoUrl:'https://www.youtube.com/watch?v=pCPyqW60Wuk'},
+  {nome:'Remada curvada com barra', videoUrl:'https://www.youtube.com/watch?v=jhFoLNInyvs'},
+  {nome:'Rosca direta com barra', videoUrl:'https://www.youtube.com/watch?v=Et1wgGMGW8w'},
+  {nome:'Leg press 45°', videoUrl:'https://www.youtube.com/watch?v=waAxlYvtCcI'},
+  {nome:'Puxada frontal (pulley frente)', videoUrl:'https://www.youtube.com/watch?v=BOW9my4J_ek'},
+  {nome:'Elevação lateral com halteres', videoUrl:'https://www.youtube.com/watch?v=jannLx4RxKo'},
+  {nome:'Prancha isométrica', videoUrl:'https://www.youtube.com/watch?v=OnVIGDpnMow'},
+  {nome:'Abdominal supra', videoUrl:'https://www.youtube.com/watch?v=hZVIstfFsIc'}
+];
+async function carregarBiblioteca(){
+  if(bibliotecaCache.length) { atualizarDatalistExercicios(); return; }
+  const mapa = {};
+  BIBLIOTECA_PADRAO.forEach(b=>mapa[b.nome.toLowerCase()]=b);
+  try{
+    const globalSnap = await db.collection('bibliotecaGlobal').get();
+    globalSnap.docs.forEach(d=>{ const b=d.data(); mapa[b.nomeLower] = {nome:b.nome, videoUrl:b.videoUrl}; });
+  }catch(err){ console.error(err); }
+  try{
+    const snap = await db.collection('bibliotecaExercicios').where('trainerId','==',currentUser.uid).get();
+    snap.docs.forEach(d=>{ const b = d.data(); mapa[b.nomeLower] = {nome:b.nome, videoUrl:b.videoUrl}; });
+  }catch(err){ console.error(err); }
+  bibliotecaCache = Object.values(mapa);
+  atualizarDatalistExercicios();
+}
+function atualizarDatalistExercicios(){
+  const dl = document.getElementById('lista-exercicios-global');
+  if(dl) dl.innerHTML = bibliotecaCache.map(b=>`<option value="${escapeHtml(b.nome)}"></option>`).join('');
+}
+function onNomeExercicioInput(di, ei, valor){
+  const ex = semanaAtual().dias[di].exercicios[ei];
+  ex.nome = valor;
+  const match = bibliotecaCache.find(b=>b.nome.toLowerCase()===valor.toLowerCase());
+  if(match && !ex.videoUrl){
+    ex.videoUrl = match.videoUrl;
+    toast('Vídeo preenchido automaticamente 🎬','ok');
+    renderTreinoDias();
+  }
+}
+async function upsertBibliotecaAoSalvar(plano){
+  const vistos = new Set();
+  for(const sem of (plano.semanas||[])){
+    for(const dia of (sem.dias||[])){
+      for(const ex of (dia.exercicios||[])){
+        if(!ex.nome || !ex.videoUrl) continue;
+        const nomeLower = ex.nome.trim().toLowerCase();
+        if(!nomeLower || vistos.has(nomeLower)) continue;
+        vistos.add(nomeLower);
+        const docId = currentUser.uid + '_' + nomeLower.replace(/[^a-z0-9]+/g,'-').slice(0,80);
+        try{
+          await db.collection('bibliotecaExercicios').doc(docId).set({
+            trainerId: currentUser.uid, nome: ex.nome.trim(), nomeLower, videoUrl: ex.videoUrl,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, {merge:true});
+        }catch(err){ console.error(err); }
+      }
+    }
+  }
+  bibliotecaCache = []; // força recarregar na próxima vez
+}
 let pesoChart = null;
 
 /* ============ UTIL ============ */
@@ -252,9 +315,15 @@ auth.onAuthStateChanged(async (user) => {
     const userDoc = await db.collection('users').doc(user.uid).get();
     if(!userDoc.exists){ toast('Cadastro incompleto. Contate o suporte.','err'); auth.signOut(); return; }
     const data = userDoc.data();
-    currentUser = {uid:user.uid, role:data.role, name:data.name, email:data.email, trainerId:data.trainerId||null};
+    if(data.bloqueado === true){
+      toast('Seu acesso foi bloqueado. Entre em contato com o suporte para regularizar sua assinatura.','err');
+      await auth.signOut();
+      return;
+    }
+    currentUser = {uid:user.uid, role:data.role, name:data.name, email:data.email, trainerId:data.trainerId||null, isDev: data.isDev===true};
     if(data.role==='personal'){
       document.getElementById('personal-name-label').textContent = data.name;
+      document.getElementById('nav-item-dev').classList.toggle('hidden', !currentUser.isDev);
       hideAllScreens();
       document.getElementById('screen-personal').classList.remove('hidden');
       updateMobileTopbar();
@@ -263,6 +332,11 @@ auth.onAuthStateChanged(async (user) => {
       const q = await db.collection('alunos').where('uid','==',user.uid).limit(1).get();
       if(q.empty){ toast('Aluno não encontrado','err'); auth.signOut(); return; }
       currentAlunoDoc = {id:q.docs[0].id, ...q.docs[0].data()};
+      if(currentAlunoDoc.ativo === false){
+        toast('Seu acesso foi bloqueado pelo seu personal trainer. Entre em contato com ele.','err');
+        await auth.signOut();
+        return;
+      }
       document.getElementById('aluno-name-label').textContent = 'Olá, ' + (data.name||'').split(' ')[0];
       hideAllScreens();
       document.getElementById('screen-aluno').classList.remove('hidden');
@@ -295,6 +369,7 @@ function goPersonalView(view){
       else if(view==='alunos') await renderAlunosList();
       else if(view==='agenda') await renderAgendaGeral();
       else if(view==='financeiro') await renderFinanceiroGeral();
+      else if(view==='dev') await renderPainelDev();
     }catch(err){
       console.error(err);
       c.innerHTML = `<div class="card" style="border-color:var(--danger);">
@@ -561,11 +636,12 @@ function migrarPlanoLegado(aluno){
     semanas: [{ numero:1, dias: aluno.treino?.dias || [], refeicoes: aluno.dieta?.refeicoes || [] }]
   };
 }
-function renderTabTreino(box, aluno){
+async function renderTabTreino(box, aluno){
   planoEdit = migrarPlanoLegado(aluno);
   if(!planoEdit.semanas || !planoEdit.semanas.length) planoEdit.semanas = [{numero:1, dias:[], refeicoes:[]}];
   planoSemanaAtiva = 0;
   box.innerHTML = `
+    <datalist id="lista-exercicios-global"></datalist>
     <div class="card" style="margin-bottom:14px;">
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <div>
@@ -589,6 +665,7 @@ function renderTabTreino(box, aluno){
   `;
   renderPlanoSemanasTabs();
   renderPlanoConteudo();
+  await carregarBiblioteca();
 }
 function setPlanoTipo(val){
   planoEdit.tipo = val;
@@ -697,13 +774,17 @@ function renderTreinoDias(){
       </div>
       ${(dia.exercicios||[]).map((ex,ei)=>`
         <div class="exercise-row">
-          <input value="${escapeHtml(ex.nome||'')}" placeholder="Ex: Supino reto" oninput="semanaAtual().dias[${di}].exercicios[${ei}].nome=this.value">
+          <input list="lista-exercicios-global" value="${escapeHtml(ex.nome||'')}" placeholder="Ex: Supino reto" oninput="onNomeExercicioInput(${di},${ei},this.value)">
           <input value="${escapeHtml(ex.series||'')}" placeholder="4" oninput="semanaAtual().dias[${di}].exercicios[${ei}].series=this.value">
           <input value="${escapeHtml(ex.reps||'')}" placeholder="10" oninput="semanaAtual().dias[${di}].exercicios[${ei}].reps=this.value">
           <input value="${escapeHtml(ex.carga||'')}" placeholder="kg" oninput="semanaAtual().dias[${di}].exercicios[${ei}].carga=this.value">
           <input value="${escapeHtml(ex.descanso||'')}" placeholder="60s" oninput="semanaAtual().dias[${di}].exercicios[${ei}].descanso=this.value">
           <input value="${escapeHtml(ex.obs||'')}" placeholder="obs" oninput="semanaAtual().dias[${di}].exercicios[${ei}].obs=this.value">
           <button class="btn btn-ghost btn-sm" onclick="removeExercicio(${di},${ei})">✕</button>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center; margin:2px 0 10px;">
+          <input value="${escapeHtml(ex.videoUrl||'')}" placeholder="Link do vídeo (YouTube) — cole aqui a demonstração" oninput="semanaAtual().dias[${di}].exercicios[${ei}].videoUrl=this.value" style="flex:1; font-size:12px;">
+          <a href="https://www.youtube.com/results?search_query=${encodeURIComponent((ex.nome||'exercicio')+' execução correta iniciante')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="white-space:nowrap; text-decoration:none;">🔍 Buscar vídeo</a>
         </div>
       `).join('')}
       <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="addExercicio(${di})">+ Exercício</button>
@@ -726,7 +807,7 @@ function toggleDiaSemanaChip(di, diaNome){
 }
 function addDiaTreino(){ semanaAtual().dias.push({id:uid(), tipoRepeticao:'dias_semana', diasSemana:[], dataInicio:'', dataFim:'', nomeTreino:'', exercicios:[]}); renderTreinoDias(); }
 function removeDiaTreino(di){ semanaAtual().dias.splice(di,1); renderTreinoDias(); }
-function addExercicio(di){ const d=semanaAtual().dias[di]; if(!d.exercicios) d.exercicios=[]; d.exercicios.push({id:uid(), nome:'',series:'',reps:'',carga:'',descanso:'',obs:''}); renderTreinoDias(); }
+function addExercicio(di){ const d=semanaAtual().dias[di]; if(!d.exercicios) d.exercicios=[]; d.exercicios.push({id:uid(), nome:'',series:'',reps:'',carga:'',descanso:'',obs:'',videoUrl:''}); renderTreinoDias(); }
 function removeExercicio(di,ei){ semanaAtual().dias[di].exercicios.splice(ei,1); renderTreinoDias(); }
 
 function renderRefeicoes(){
@@ -804,6 +885,7 @@ async function salvarPlano(){
     planoEdit.observacoesGerais = document.getElementById('pl-obs').value.trim();
     planoEdit.updatedAt = firebase.firestore.Timestamp.now();
     await db.collection('alunos').doc(selectedAlunoId).update({plano: planoEdit});
+    await upsertBibliotecaAoSalvar(planoEdit);
     toast('Treino e dieta salvos com sucesso','ok');
   }catch(err){ toast(err.message,'err'); }
 }
@@ -1073,6 +1155,148 @@ async function renderFinanceiroGeral(){
   `;
 }
 
+/* ---------- PAINEL DEV (dono do app) ---------- */
+let painelDevTab = 'personais';
+async function renderPainelDev(){
+  const c = document.getElementById('personal-content');
+  c.innerHTML = '<div class="spinner"></div>';
+  c.innerHTML = `
+    <h1 style="font-size:24px; margin-bottom:4px;">Painel Dev</h1>
+    <div style="color:var(--muted); font-size:13px; margin-bottom:18px;">Administração de assinaturas e biblioteca global de exercícios</div>
+    <div style="display:flex; gap:6px; margin-bottom:18px;">
+      <button class="tab-btn ${painelDevTab==='personais'?'active':''}" onclick="painelDevTab='personais'; renderPainelDev()">Personais</button>
+      <button class="tab-btn ${painelDevTab==='alunos'?'active':''}" onclick="painelDevTab='alunos'; renderPainelDev()">Alunos</button>
+      <button class="tab-btn ${painelDevTab==='biblioteca'?'active':''}" onclick="painelDevTab='biblioteca'; renderPainelDev()">Biblioteca de exercícios</button>
+    </div>
+    <div id="painel-dev-content"></div>
+  `;
+  const box = document.getElementById('painel-dev-content');
+  box.innerHTML = '<div class="spinner"></div>';
+  try{
+    if(painelDevTab==='personais') await renderDevPersonais(box);
+    else if(painelDevTab==='alunos') await renderDevAlunos(box);
+    else await renderDevBiblioteca(box);
+  }catch(err){
+    console.error(err);
+    box.innerHTML = `<div class="card" style="border-color:var(--danger); color:var(--danger);">${escapeHtml(err.message)}</div>`;
+  }
+}
+async function renderDevPersonais(box){
+  const snap = await db.collection('users').where('role','==','personal').get();
+  const personais = snap.docs.map(d=>({uid:d.id, ...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  box.innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${personais.map(p=>`
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(p.name||'(sem nome)')} ${p.isDev?'<span class=\"pill pill-gray\">dev</span>':''}</div>
+            <div style="font-size:12px; color:var(--muted);">${escapeHtml(p.email||'')}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="pill ${p.bloqueado?'pill-red':'pill-green'}">${p.bloqueado?'Bloqueado':'Ativo'}</span>
+            ${!p.isDev ? `<button class="btn ${p.bloqueado?'btn-accent':'btn-danger'} btn-sm" onclick="toggleBloqueioPersonal('${p.uid}', ${!p.bloqueado})">${p.bloqueado?'Desbloquear':'Bloquear'}</button>` : ''}
+          </div>
+        </div>
+      `).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhum personal cadastrado</div>'}
+    </div>
+  `;
+}
+async function toggleBloqueioPersonal(uid, bloquear){
+  try{
+    await db.collection('users').doc(uid).update({bloqueado: bloquear});
+    toast(bloquear ? 'Personal bloqueado' : 'Personal desbloqueado','ok');
+    renderPainelDev();
+  }catch(err){ toast(err.message,'err'); }
+}
+async function renderDevAlunos(box){
+  const snap = await db.collection('alunos').get();
+  const alunos = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  const personaisSnap = await db.collection('users').where('role','==','personal').get();
+  const nomePersonal = {};
+  personaisSnap.docs.forEach(d=>nomePersonal[d.id]=d.data().name);
+  box.innerHTML = `
+    <input placeholder="Buscar aluno..." style="margin-bottom:14px;" oninput="filterDevAlunos(this.value)">
+    <div id="dev-alunos-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+  `;
+  window._devAlunosCache = alunos.map(a=>({...a, personalNome: nomePersonal[a.trainerId]||'—'}));
+  renderDevAlunosRows(window._devAlunosCache);
+}
+function renderDevAlunosRows(lista){
+  const wrap = document.getElementById('dev-alunos-list');
+  wrap.innerHTML = lista.map(a=>`
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-weight:600;">${escapeHtml(a.nome)}</div>
+        <div style="font-size:12px; color:var(--muted);">Personal: ${escapeHtml(a.personalNome)} · ${escapeHtml(a.email||'')}</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="pill ${a.ativo===false?'pill-red':'pill-green'}">${a.ativo===false?'Bloqueado':'Ativo'}</span>
+        <button class="btn ${a.ativo===false?'btn-accent':'btn-danger'} btn-sm" onclick="toggleBloqueioAlunoDev('${a.id}', ${a.ativo===false})">${a.ativo===false?'Desbloquear':'Bloquear'}</button>
+      </div>
+    </div>
+  `).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhum aluno encontrado</div>';
+}
+function filterDevAlunos(term){
+  term = term.toLowerCase();
+  renderDevAlunosRows((window._devAlunosCache||[]).filter(a=>a.nome.toLowerCase().includes(term) || (a.personalNome||'').toLowerCase().includes(term)));
+}
+async function toggleBloqueioAlunoDev(alunoId, ativar){
+  try{
+    await db.collection('alunos').doc(alunoId).update({ativo: ativar});
+    toast(ativar ? 'Aluno desbloqueado' : 'Aluno bloqueado','ok');
+    renderPainelDev();
+  }catch(err){ toast(err.message,'err'); }
+}
+async function renderDevBiblioteca(box){
+  const snap = await db.collection('bibliotecaGlobal').orderBy('nome').get();
+  const itens = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  box.innerHTML = `
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <input id="dv-nome" placeholder="Nome do exercício" style="flex:1; min-width:200px;">
+        <input id="dv-video" placeholder="Link do vídeo (YouTube)" style="flex:1; min-width:220px;">
+        <button class="btn btn-accent" onclick="addBibliotecaGlobal()">+ Adicionar</button>
+      </div>
+      <div style="font-size:11px; color:var(--muted); margin-top:6px;">Esses exercícios ficam disponíveis para TODOS os personals do app assim que eles digitarem o nome.</div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${itens.map(ex=>`
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(ex.nome)}</div>
+            <a href="${escapeHtml(ex.videoUrl)}" target="_blank" rel="noopener" style="font-size:12px; color:var(--muted);">${escapeHtml(ex.videoUrl)}</a>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="removeBibliotecaGlobal('${ex.id}')">Remover</button>
+        </div>
+      `).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhum exercício na biblioteca global ainda</div>'}
+    </div>
+  `;
+}
+async function addBibliotecaGlobal(){
+  const nome = document.getElementById('dv-nome').value.trim();
+  const videoUrl = document.getElementById('dv-video').value.trim();
+  if(!nome || !videoUrl){ toast('Preencha nome e link do vídeo','err'); return; }
+  const nomeLower = nome.toLowerCase();
+  const docId = nomeLower.replace(/[^a-z0-9]+/g,'-').slice(0,80);
+  try{
+    await db.collection('bibliotecaGlobal').doc(docId).set({
+      nome, nomeLower, videoUrl, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, {merge:true});
+    bibliotecaCache = [];
+    toast('Exercício adicionado à biblioteca global','ok');
+    renderPainelDev();
+  }catch(err){ toast(err.message,'err'); }
+}
+async function removeBibliotecaGlobal(id){
+  if(!confirm('Remover esse exercício da biblioteca global?')) return;
+  try{
+    await db.collection('bibliotecaGlobal').doc(id).delete();
+    bibliotecaCache = [];
+    toast('Removido','ok');
+    renderPainelDev();
+  }catch(err){ toast(err.message,'err'); }
+}
+
 /* =========================================================
    ALUNO — NAVEGAÇÃO E TELAS
    ========================================================= */
@@ -1144,6 +1368,7 @@ async function renderAlunoPlano(c){
             <div style="font-weight:600; font-size:14px;">${escapeHtml(ex.nome)}</div>
             <div style="font-size:12px; color:var(--muted);">${ex.series||'-'}x${ex.reps||'-'} · ${ex.carga||'-'}kg · desc ${ex.descanso||'-'} ${ex.obs?'· '+escapeHtml(ex.obs):''}</div>
           </div>
+          ${ex.videoUrl ? `<a href="${escapeHtml(ex.videoUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="white-space:nowrap; text-decoration:none;">▶️ Vídeo</a>` : ''}
         </div>
       `).join('') || '<div style="color:var(--muted); font-size:13px;">Sem exercícios cadastrados</div>'}
       ${ehHoje && idsExercicios.length ? `
