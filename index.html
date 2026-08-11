@@ -168,26 +168,13 @@ let selectedAlunoId = null;
 let alunoDetailTab = 'perfil';
 let alunosListCache = [];
 let bibliotecaCache = [];
-const BIBLIOTECA_PADRAO = [
-  {nome:'Agachamento livre com barra', videoUrl:'https://www.youtube.com/watch?v=rM6SDUdl9fs'},
-  {nome:'Supino reto com barra', videoUrl:'https://www.youtube.com/watch?v=pCPyqW60Wuk'},
-  {nome:'Remada curvada com barra', videoUrl:'https://www.youtube.com/watch?v=jhFoLNInyvs'},
-  {nome:'Rosca direta com barra', videoUrl:'https://www.youtube.com/watch?v=Et1wgGMGW8w'},
-  {nome:'Leg press 45°', videoUrl:'https://www.youtube.com/watch?v=waAxlYvtCcI'},
-  {nome:'Puxada frontal (pulley frente)', videoUrl:'https://www.youtube.com/watch?v=BOW9my4J_ek'},
-  {nome:'Elevação lateral com halteres', videoUrl:'https://www.youtube.com/watch?v=jannLx4RxKo'},
-  {nome:'Prancha isométrica', videoUrl:'https://www.youtube.com/watch?v=OnVIGDpnMow'},
-  {nome:'Abdominal supra', videoUrl:'https://www.youtube.com/watch?v=hZVIstfFsIc'}
-];
 async function carregarBiblioteca(){
-  if(bibliotecaCache.length) { atualizarDatalistExercicios(); return; }
-  const mapa = {};
-  BIBLIOTECA_PADRAO.forEach(b=>mapa[b.nome.toLowerCase()]=b);
   try{
     const globalSnap = await db.collection('bibliotecaGlobal').get();
-    globalSnap.docs.forEach(d=>{ const b=d.data(); mapa[b.nomeLower] = {nome:b.nome, videoUrl:b.videoUrl}; });
-  }catch(err){ console.error(err); }
-  bibliotecaCache = Object.values(mapa).sort((a,b)=>a.nome.localeCompare(b.nome));
+    bibliotecaCache = globalSnap.docs
+      .map(d=>{ const b=d.data(); return {nome:b.nome, videoUrl:b.videoUrl}; })
+      .sort((a,b)=>a.nome.localeCompare(b.nome));
+  }catch(err){ console.error(err); bibliotecaCache = []; }
   atualizarDatalistExercicios();
 }
 function atualizarDatalistExercicios(){
@@ -198,14 +185,19 @@ function onNomeExercicioInput(di, ei, valor){
   const ex = semanaAtual().dias[di].exercicios[ei];
   ex.nome = valor;
   const match = bibliotecaCache.find(b=>b.nome.toLowerCase()===valor.toLowerCase());
-  if(match && ex.videoUrl !== match.videoUrl){
-    ex.videoUrl = match.videoUrl;
-    toast('Vídeo preenchido automaticamente 🎬','ok');
-    renderTreinoDias();
+  if(match){
+    if(ex.videoUrl !== match.videoUrl){
+      ex.videoUrl = match.videoUrl;
+      toast('Vídeo preenchido automaticamente 🎬','ok');
+    }
+  } else if(ex.videoUrl){
+    ex.videoUrl = '';
   }
+  renderTreinoDias();
 }
 function onSelecionarVideoBiblioteca(di, ei, videoUrl){
   semanaAtual().dias[di].exercicios[ei].videoUrl = videoUrl;
+  renderTreinoDias();
 }
 let pesoChart = null;
 
@@ -815,13 +807,14 @@ function renderTreinoDias(){
           <input value="${escapeHtml(ex.obs||'')}" placeholder="obs" oninput="semanaAtual().dias[${di}].exercicios[${ei}].obs=this.value">
           <button class="btn btn-ghost btn-sm" onclick="removeExercicio(${di},${ei})">✕</button>
         </div>
-        <div style="display:flex; gap:6px; align-items:center; margin:2px 0 10px;">
+        <div style="display:flex; gap:6px; align-items:center; margin:2px 0 4px;">
           <label class="label" style="margin:0; white-space:nowrap;">Vídeo:</label>
           <select onchange="onSelecionarVideoBiblioteca(${di},${ei},this.value)" style="flex:1; font-size:12px;">
             <option value="">Sem vídeo</option>
             ${bibliotecaCache.map(b=>`<option value="${escapeHtml(b.videoUrl)}" ${ex.videoUrl===b.videoUrl?'selected':''}>${escapeHtml(b.nome)}</option>`).join('')}
           </select>
         </div>
+        ${ex.videoUrl ? renderVideoEmbed(ex.videoUrl) : `<div style="margin:0 0 10px 32px; font-size:11px; color:var(--muted);">Sem vídeo cadastrado para este exercício</div>`}
       `).join('')}
       <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="addExercicio(${di})">+ Exercício</button>
     </div>
