@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -213,7 +214,7 @@ function fmtMoney(v){ return 'R$ ' + (Number(v)||0).toFixed(2).replace('.',',');
 function getEmbedInfo(url){
   if(!url) return null;
   let m = url.match(/(?:youtu\.be\/|youtube\.com\/watch\?v=|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{6,})/);
-  if(m) return {type:'youtube', src:'https://www.youtube.com/embed/'+m[1]+'?loop=1&playlist='+m[1]};
+  if(m) return {type:'youtube', videoId:m[1]};
   m = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
   if(m) return {type:'iframe', src:'https://drive.google.com/file/d/'+m[1]+'/preview'};
   m = url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/);
@@ -221,12 +222,58 @@ function getEmbedInfo(url){
   if(/\.(mp4|webm|ogg)(\?|$)/i.test(url) || url.includes('firebasestorage')) return {type:'video', src:url};
   return {type:'link', src:url};
 }
+/* --- Loop de vídeos do YouTube via API oficial (funciona também com Shorts) --- */
+let ytApiReady = false;
+let ytPendingInits = [];
+window.onYouTubeIframeAPIReady = function(){
+  ytApiReady = true;
+  ytPendingInits.forEach(fn=>fn());
+  ytPendingInits = [];
+};
+function initYoutubePlayer(containerId, videoId){
+  const create = () => {
+    if(!document.getElementById(containerId)) return;
+    new YT.Player(containerId, {
+      videoId: videoId,
+      playerVars: { rel:0, playsinline:1, loop:1, playlist:videoId },
+      events: {
+        onStateChange: function(e){
+          if(e.data === YT.PlayerState.ENDED){
+            e.target.seekTo(0);
+            e.target.playVideo();
+          }
+        }
+      }
+    });
+  };
+  if(ytApiReady && window.YT && window.YT.Player) create();
+  else ytPendingInits.push(create);
+}
+function onVideoDetailsToggle(el){
+  if(el.open && !el.dataset.ytInit){
+    const videoId = el.dataset.videoId;
+    const containerId = el.dataset.containerId;
+    if(videoId && containerId){
+      el.dataset.ytInit = '1';
+      initYoutubePlayer(containerId, videoId);
+    }
+  }
+}
 function renderVideoEmbed(videoUrl){
   const info = getEmbedInfo(videoUrl);
   if(!info) return '';
-  const player = info.type==='youtube'
-    ? `<iframe src="${escapeHtml(info.src)}" style="width:100%; height:100%; border:0; border-radius:10px; position:absolute; top:0; left:0;" allow="autoplay; encrypted-media" allowfullscreen></iframe>`
-    : info.type==='iframe'
+  if(info.type==='youtube'){
+    const containerId = 'ytp-' + uid();
+    return `
+      <details ontoggle="onVideoDetailsToggle(this)" data-video-id="${escapeHtml(info.videoId)}" data-container-id="${containerId}" style="margin:8px 0 4px 32px;">
+        <summary style="cursor:pointer; color:var(--accent); font-size:12px; font-weight:600;">▶️ Ver vídeo do exercício</summary>
+        <div style="margin-top:8px; position:relative; width:100%; max-width:420px; padding-top:56%;">
+          <div id="${containerId}" style="position:absolute; top:0; left:0; width:100%; height:100%; border-radius:10px; overflow:hidden;"></div>
+        </div>
+      </details>
+    `;
+  }
+  const player = info.type==='iframe'
     ? `<iframe src="${escapeHtml(info.src)}" style="width:100%; height:100%; border:0; border-radius:10px; position:absolute; top:0; left:0;" allow="autoplay; encrypted-media" allowfullscreen></iframe>`
     : info.type==='video'
     ? `<video src="${escapeHtml(info.src)}" controls loop style="width:100%; height:100%; border-radius:10px; position:absolute; top:0; left:0; background:#000;"></video>`
