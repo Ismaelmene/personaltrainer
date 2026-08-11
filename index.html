@@ -12,6 +12,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <style>
 :root{
   --bg:#0F1115; --surface:#171A21; --surface2:#20242E; --surface3:#282D3A;
@@ -154,6 +155,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+const storage = firebase.storage();
 
 /* ============ ESTADO GLOBAL ============ */
 let currentUser = null; // {uid, role, name, email, trainerId?}
@@ -238,6 +240,11 @@ function toast(msg, type){
   setTimeout(()=>el.remove(), 3200);
 }
 function fmtMoney(v){ return 'R$ ' + (Number(v)||0).toFixed(2).replace('.',','); }
+function diasRestantes(trialExpiraEm){
+  if(!trialExpiraEm) return null;
+  const exp = trialExpiraEm.toDate ? trialExpiraEm.toDate() : new Date(trialExpiraEm);
+  return Math.ceil((exp - new Date()) / (1000*60*60*24));
+}
 function fmtDate(d){
   if(!d) return '-';
   const dt = (d.toDate) ? d.toDate() : new Date(d);
@@ -267,9 +274,11 @@ function renderLoginForm(){
   document.getElementById('toggle-link').textContent = isSignup ? 'Fazer login' : 'Criar conta de personal';
   area.innerHTML = `
     ${isSignup ? `<div style="margin-bottom:10px;"><label class="label">Nome</label><input id="in-nome" placeholder="Seu nome"></div>` : ''}
+    ${isSignup ? `<div style="margin-bottom:10px;"><label class="label">Telefone</label><input id="in-telefone" placeholder="(00) 00000-0000"></div>` : ''}
     <div style="margin-bottom:10px;"><label class="label">Email</label><input id="in-email" type="email" placeholder="voce@email.com"></div>
     <div style="margin-bottom:16px;"><label class="label">Senha</label><input id="in-senha" type="password" placeholder="••••••••"></div>
     <button class="btn btn-accent" style="width:100%;" onclick="submitAuth()">${isSignup ? 'Criar conta' : 'Entrar'}</button>
+    ${isSignup ? `<div style="font-size:11px; color:var(--muted); margin-top:10px; text-align:center;">Você terá 30 dias de acesso grátis para testar o app.</div>` : ''}
   `;
 }
 async function submitAuth(){
@@ -279,9 +288,16 @@ async function submitAuth(){
   try{
     if(authMode==='signup' && loginRole==='personal'){
       const nome = document.getElementById('in-nome').value.trim();
+      const telefone = document.getElementById('in-telefone').value.trim();
       if(!nome){ toast('Informe seu nome','err'); return; }
+      if(!telefone){ toast('Informe seu telefone','err'); return; }
       const cred = await auth.createUserWithEmailAndPassword(email, senha);
-      await db.collection('users').doc(cred.user.uid).set({role:'personal', name:nome, email, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+      const trialExpiraEm = new Date(Date.now() + 30*24*60*60*1000);
+      await db.collection('users').doc(cred.user.uid).set({
+        role:'personal', name:nome, email, telefone,
+        trialExpiraEm, mensalidadeValor: 0,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
     } else {
       await auth.signInWithEmailAndPassword(email, senha);
     }
@@ -319,6 +335,14 @@ auth.onAuthStateChanged(async (user) => {
       toast('Seu acesso foi bloqueado. Entre em contato com o suporte para regularizar sua assinatura.','err');
       await auth.signOut();
       return;
+    }
+    if(data.role==='personal' && data.isDev!==true){
+      const dias = diasRestantes(data.trialExpiraEm);
+      if(dias!==null && dias<0){
+        toast('Seu período de acesso expirou. Entre em contato com o suporte para renovar sua assinatura.','err');
+        await auth.signOut();
+        return;
+      }
     }
     currentUser = {uid:user.uid, role:data.role, name:data.name, email:data.email, trainerId:data.trainerId||null, isDev: data.isDev===true};
     if(data.role==='personal'){
@@ -1187,20 +1211,88 @@ async function renderPainelDev(){
 async function renderDevPersonais(box){
   const snap = await db.collection('users').where('role','==','personal').get();
   const personais = snap.docs.map(d=>({uid:d.id, ...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+
+  await Promise.all(personais.map(async p=>{
+    const pgSnap = await db.collection('users').doc(p.uid).collection('pagamentosApp').orderBy('createdAt','desc').limit(5).get();
+    p.pagamentos = pgSnap.docs.map(d=>({id:d.id, ...d.data()}));
+  }));
+
+  let pagamentosGeral = [];
+  try{
+    const cgSnap = await db.collectionGroup('pagamentosApp').get();
+    pagamentosGeral = cgSnap.docs.map(d=>d.data());
+  }catch(err){ console.error(err); }
+
+  const mesAtual = new Date().toISOString().slice(0,7);
+  const recebidoMes = pagamentosGeral.filter(p=>p.status==='pago' && p.mes===mesAtual).reduce((s,p)=>s+(p.valor||0),0);
+  const totalRecebido = pagamentosGeral.filter(p=>p.status==='pago').reduce((s,p)=>s+(p.valor||0),0);
+  const pendenteTotal = pagamentosGeral.filter(p=>p.status!=='pago').reduce((s,p)=>s+(p.valor||0),0);
+  const expirandoEmBreve = personais.filter(p=>{
+    if(p.isDev) return false;
+    const d = diasRestantes(p.trialExpiraEm);
+    return d!==null && d<=5;
+  }).length;
+
   box.innerHTML = `
-    <div style="display:flex; flex-direction:column; gap:8px;">
-      ${personais.map(p=>`
-        <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <div style="font-weight:600;">${escapeHtml(p.name||'(sem nome)')} ${p.isDev?'<span class=\"pill pill-gray\">dev</span>':''}</div>
-            <div style="font-size:12px; color:var(--muted);">${escapeHtml(p.email||'')}</div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:20px;">
+      <div class="card"><div class="label">Recebido este mês</div><div class="stat-num" style="color:var(--success);">${fmtMoney(recebidoMes)}</div></div>
+      <div class="card"><div class="label">Total já recebido</div><div class="stat-num">${fmtMoney(totalRecebido)}</div></div>
+      <div class="card"><div class="label">Ainda a receber</div><div class="stat-num" style="color:var(--orange);">${fmtMoney(pendenteTotal)}</div></div>
+      <div class="card"><div class="label">Expirando em breve</div><div class="stat-num" style="color:${expirandoEmBreve>0?'var(--danger)':'var(--text)'};">${expirandoEmBreve}</div></div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      ${personais.map(p=>{
+        const dias = p.isDev ? null : diasRestantes(p.trialExpiraEm);
+        let badge = '<span class="pill pill-gray">Sem controle de acesso</span>';
+        if(dias!==null){
+          if(dias<0) badge = '<span class="pill pill-red">Expirado</span>';
+          else if(dias<=5) badge = `<span class="pill pill-orange">Expira em ${dias} dia${dias===1?'':'s'}</span>`;
+          else badge = `<span class="pill pill-green">Expira em ${dias} dias</span>`;
+        }
+        const recebidoTotalP = (p.pagamentos||[]).filter(x=>x.status==='pago').reduce((s,x)=>s+(x.valor||0),0);
+        const pendenteP = (p.pagamentos||[]).filter(x=>x.status!=='pago').reduce((s,x)=>s+(x.valor||0),0);
+        return `
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+            <div>
+              <div style="font-weight:600;">${escapeHtml(p.name||'(sem nome)')} ${p.isDev?'<span class="pill pill-gray">dev</span>':''}</div>
+              <div style="font-size:12px; color:var(--muted);">${escapeHtml(p.email||'')} ${p.telefone?'· '+escapeHtml(p.telefone):'· <span style="color:var(--danger);">sem telefone</span>'}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span class="pill ${p.bloqueado?'pill-red':'pill-green'}">${p.bloqueado?'Bloqueado':'Ativo'}</span>
+              ${badge}
+            </div>
           </div>
-          <div style="display:flex; align-items:center; gap:10px;">
-            <span class="pill ${p.bloqueado?'pill-red':'pill-green'}">${p.bloqueado?'Bloqueado':'Ativo'}</span>
-            ${!p.isDev ? `<button class="btn ${p.bloqueado?'btn-accent':'btn-danger'} btn-sm" onclick="toggleBloqueioPersonal('${p.uid}', ${!p.bloqueado})">${p.bloqueado?'Desbloquear':'Bloquear'}</button>` : ''}
+          <div style="display:flex; gap:16px; flex-wrap:wrap; margin:12px 0; font-size:12px; color:var(--muted);">
+            <div>Mensalidade: <b style="color:var(--text);">${fmtMoney(p.mensalidadeValor)}</b>
+              <input id="mv-${p.uid}" type="number" placeholder="novo valor" style="width:90px; display:inline-block; margin-left:6px; padding:4px 8px; font-size:12px;">
+              <button class="btn btn-ghost btn-sm" onclick="salvarMensalidadePersonal('${p.uid}')">Salvar</button>
+            </div>
+            <div>Recebido dele: <b style="color:var(--success);">${fmtMoney(recebidoTotalP)}</b></div>
+            <div>Pendente dele: <b style="color:var(--orange);">${fmtMoney(pendenteP)}</b></div>
           </div>
-        </div>
-      `).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhum personal cadastrado</div>'}
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+            ${!p.isDev ? `
+              <button class="btn btn-accent btn-sm" onclick="openNovaCobrancaPersonalModal('${p.uid}', ${Number(p.mensalidadeValor)||0})">+ Gerar cobrança</button>
+              <button class="btn btn-ghost btn-sm" onclick="renovarAcessoPersonal('${p.uid}')">Renovar +30 dias</button>
+              <button class="btn ${p.bloqueado?'btn-accent':'btn-danger'} btn-sm" onclick="toggleBloqueioPersonal('${p.uid}', ${!p.bloqueado})">${p.bloqueado?'Desbloquear':'Bloquear'}</button>
+            ` : ''}
+          </div>
+          ${(p.pagamentos||[]).length ? `
+            <div style="border-top:1px solid var(--border); padding-top:8px; display:flex; flex-direction:column; gap:6px;">
+              ${p.pagamentos.map(pg=>`
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+                  <div>${escapeHtml(pg.mes)} · ${fmtMoney(pg.valor)} · venc ${fmtDate(pg.vencimento)}</div>
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="pill ${pg.status==='pago'?'pill-green':'pill-orange'}">${pg.status}</span>
+                    ${pg.status!=='pago' ? `<button class="btn btn-ghost btn-sm" onclick="marcarPagoPersonal('${p.uid}','${pg.id}')">Marcar pago</button>` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>`;
+      }).join('') || '<div class="card" style="text-align:center; color:var(--muted);">Nenhum personal cadastrado</div>'}
     </div>
   `;
 }
@@ -1209,6 +1301,67 @@ async function toggleBloqueioPersonal(uid, bloquear){
     await db.collection('users').doc(uid).update({bloqueado: bloquear});
     toast(bloquear ? 'Personal bloqueado' : 'Personal desbloqueado','ok');
     renderPainelDev();
+  }catch(err){ toast(err.message,'err'); }
+}
+async function salvarMensalidadePersonal(uid){
+  const val = document.getElementById('mv-'+uid).value;
+  if(val==='') { toast('Informe um valor','err'); return; }
+  try{
+    await db.collection('users').doc(uid).update({mensalidadeValor: Number(val)||0});
+    toast('Valor da mensalidade atualizado','ok');
+    renderPainelDev();
+  }catch(err){ toast(err.message,'err'); }
+}
+async function renovarAcessoPersonal(uid){
+  try{
+    const doc = await db.collection('users').doc(uid).get();
+    const data = doc.data();
+    const atual = data.trialExpiraEm ? (data.trialExpiraEm.toDate ? data.trialExpiraEm.toDate() : new Date(data.trialExpiraEm)) : new Date();
+    const base = atual > new Date() ? atual : new Date();
+    const novaData = new Date(base.getTime() + 30*24*60*60*1000);
+    await db.collection('users').doc(uid).update({trialExpiraEm: novaData});
+    toast('Acesso renovado por mais 30 dias','ok');
+    renderPainelDev();
+  }catch(err){ toast(err.message,'err'); }
+}
+function openNovaCobrancaPersonalModal(uid, valorSugerido){
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg'; bg.id = 'modal-cobranca-personal';
+  const hoje = new Date();
+  bg.innerHTML = `
+    <div class="modal-box">
+      <h3 style="font-size:17px; margin-bottom:16px;">Nova cobrança de mensalidade</h3>
+      <div style="display:grid; gap:10px;">
+        <div><label class="label">Referência (mês)</label><input id="cbp-mes" value="${hoje.toISOString().slice(0,7)}"></div>
+        <div><label class="label">Valor</label><input id="cbp-valor" type="number" value="${valorSugerido||''}"></div>
+        <div><label class="label">Vencimento</label><input id="cbp-vencimento" type="date" value="${todayStr()}"></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button class="btn btn-ghost" style="flex:1;" onclick="document.getElementById('modal-cobranca-personal').remove()">Cancelar</button>
+        <button class="btn btn-accent" style="flex:1;" onclick="criarCobrancaPersonal('${uid}')">Gerar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bg);
+}
+async function criarCobrancaPersonal(uid){
+  const mes = document.getElementById('cbp-mes').value.trim();
+  const valor = Number(document.getElementById('cbp-valor').value)||0;
+  const vencimento = document.getElementById('cbp-vencimento').value;
+  if(!mes || !valor || !vencimento){ toast('Preencha todos os campos','err'); return; }
+  try{
+    await db.collection('users').doc(uid).collection('pagamentosApp').add({
+      mes, valor, vencimento: new Date(vencimento), status:'pendente', createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('modal-cobranca-personal').remove();
+    toast('Cobrança gerada','ok');
+    renderPainelDev();
+  }catch(err){ toast(err.message,'err'); }
+}
+async function marcarPagoPersonal(uid, pagId){
+  try{
+    await db.collection('users').doc(uid).collection('pagamentosApp').doc(pagId).update({status:'pago', pagoEm: firebase.firestore.FieldValue.serverTimestamp()});
+    await renovarAcessoPersonal(uid);
+    toast('Pagamento confirmado e acesso renovado','ok');
   }catch(err){ toast(err.message,'err'); }
 }
 async function renderDevAlunos(box){
@@ -1257,17 +1410,22 @@ async function renderDevBiblioteca(box){
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <input id="dv-nome" placeholder="Nome do exercício" style="flex:1; min-width:200px;">
-        <input id="dv-video" placeholder="Link do vídeo (YouTube)" style="flex:1; min-width:220px;">
-        <button class="btn btn-accent" onclick="addBibliotecaGlobal()">+ Adicionar</button>
+        <input id="dv-video" placeholder="Link do vídeo (YouTube ou outro)" style="flex:1; min-width:220px;">
       </div>
-      <div style="font-size:11px; color:var(--muted); margin-top:6px;">Esses exercícios ficam disponíveis para TODOS os personals do app assim que eles digitarem o nome.</div>
+      <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+        <span style="font-size:12px; color:var(--muted);">Ou envie um arquivo de vídeo:</span>
+        <input type="file" id="dv-video-file" accept="video/*">
+        <button class="btn btn-ghost btn-sm" onclick="uploadVideoBiblioteca()" id="btn-upload-video">Enviar arquivo</button>
+      </div>
+      <button class="btn btn-accent" style="margin-top:12px; width:100%;" onclick="addBibliotecaGlobal()">+ Adicionar à biblioteca</button>
+      <div style="font-size:11px; color:var(--muted); margin-top:6px;">Esses exercícios ficam disponíveis para TODOS os personals do app assim que eles digitarem o nome. Ao enviar um arquivo, aguarde a confirmação antes de clicar em Adicionar.</div>
     </div>
     <div style="display:flex; flex-direction:column; gap:8px;">
       ${itens.map(ex=>`
         <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
           <div>
             <div style="font-weight:600;">${escapeHtml(ex.nome)}</div>
-            <a href="${escapeHtml(ex.videoUrl)}" target="_blank" rel="noopener" style="font-size:12px; color:var(--muted);">${escapeHtml(ex.videoUrl)}</a>
+            <a href="${escapeHtml(ex.videoUrl)}" target="_blank" rel="noopener" style="font-size:12px; color:var(--muted); word-break:break-all;">${escapeHtml(ex.videoUrl)}</a>
           </div>
           <button class="btn btn-danger btn-sm" onclick="removeBibliotecaGlobal('${ex.id}')">Remover</button>
         </div>
@@ -1275,10 +1433,29 @@ async function renderDevBiblioteca(box){
     </div>
   `;
 }
+async function uploadVideoBiblioteca(){
+  const fileInput = document.getElementById('dv-video-file');
+  const file = fileInput.files[0];
+  if(!file){ toast('Escolha um arquivo de vídeo primeiro','err'); return; }
+  const btn = document.getElementById('btn-upload-video');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+  try{
+    const path = 'exercicios/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]+/g,'_');
+    const ref = storage.ref().child(path);
+    await ref.put(file);
+    const url = await ref.getDownloadURL();
+    document.getElementById('dv-video').value = url;
+    toast('Vídeo enviado! Agora clique em "Adicionar à biblioteca"','ok');
+  }catch(err){
+    toast('Erro ao enviar: ' + err.message,'err');
+  }finally{
+    btn.disabled = false; btn.textContent = 'Enviar arquivo';
+  }
+}
 async function addBibliotecaGlobal(){
   const nome = document.getElementById('dv-nome').value.trim();
   const videoUrl = document.getElementById('dv-video').value.trim();
-  if(!nome || !videoUrl){ toast('Preencha nome e link do vídeo','err'); return; }
+  if(!nome || !videoUrl){ toast('Preencha nome e vídeo (link ou arquivo enviado)','err'); return; }
   const nomeLower = nome.toLowerCase();
   const docId = nomeLower.replace(/[^a-z0-9]+/g,'-').slice(0,80);
   try{
