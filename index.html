@@ -103,10 +103,10 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--accent)
 <div id="screen-personal" class="hidden" style="display:flex; min-height:100vh;">
   <div class="sidebar" id="sidebar">
     <div class="font-display" style="font-size:19px; color:var(--accent); padding:6px 10px 22px;">MEU PERSONAL</div>
-    <div class="nav-item active" data-view="dashboard" onclick="goPersonalView('dashboard')">📊 Dashboard</div>
-    <div class="nav-item" data-view="alunos" onclick="goPersonalView('alunos')">👥 Alunos</div>
-    <div class="nav-item" data-view="agenda" onclick="goPersonalView('agenda')">📅 Agenda</div>
-    <div class="nav-item" data-view="financeiro" onclick="goPersonalView('financeiro')">💰 Financeiro</div>
+    <div id="nav-item-dashboard" class="nav-item active" data-view="dashboard" onclick="goPersonalView('dashboard')">📊 Dashboard</div>
+    <div id="nav-item-alunos" class="nav-item" data-view="alunos" onclick="goPersonalView('alunos')">👥 Alunos</div>
+    <div id="nav-item-agenda" class="nav-item" data-view="agenda" onclick="goPersonalView('agenda')">📅 Agenda</div>
+    <div id="nav-item-financeiro" class="nav-item" data-view="financeiro" onclick="goPersonalView('financeiro')">💰 Financeiro</div>
     <div id="nav-item-dev" class="hidden nav-item" data-view="dev" onclick="goPersonalView('dev')">🛠️ Painel Dev</div>
     <div style="flex:1;"></div>
     <div style="border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
@@ -324,10 +324,13 @@ auth.onAuthStateChanged(async (user) => {
     if(data.role==='personal'){
       document.getElementById('personal-name-label').textContent = data.name;
       document.getElementById('nav-item-dev').classList.toggle('hidden', !currentUser.isDev);
+      ['nav-item-dashboard','nav-item-alunos','nav-item-agenda','nav-item-financeiro'].forEach(id=>{
+        document.getElementById(id).classList.toggle('hidden', currentUser.isDev);
+      });
       hideAllScreens();
       document.getElementById('screen-personal').classList.remove('hidden');
       updateMobileTopbar();
-      goPersonalView('dashboard');
+      goPersonalView(currentUser.isDev ? 'dev' : 'dashboard');
     } else {
       const q = await db.collection('alunos').where('uid','==',user.uid).limit(1).get();
       if(q.empty){ toast('Aluno não encontrado','err'); auth.signOut(); return; }
