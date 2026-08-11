@@ -187,11 +187,7 @@ async function carregarBiblioteca(){
     const globalSnap = await db.collection('bibliotecaGlobal').get();
     globalSnap.docs.forEach(d=>{ const b=d.data(); mapa[b.nomeLower] = {nome:b.nome, videoUrl:b.videoUrl}; });
   }catch(err){ console.error(err); }
-  try{
-    const snap = await db.collection('bibliotecaExercicios').where('trainerId','==',currentUser.uid).get();
-    snap.docs.forEach(d=>{ const b = d.data(); mapa[b.nomeLower] = {nome:b.nome, videoUrl:b.videoUrl}; });
-  }catch(err){ console.error(err); }
-  bibliotecaCache = Object.values(mapa);
+  bibliotecaCache = Object.values(mapa).sort((a,b)=>a.nome.localeCompare(b.nome));
   atualizarDatalistExercicios();
 }
 function atualizarDatalistExercicios(){
@@ -202,32 +198,14 @@ function onNomeExercicioInput(di, ei, valor){
   const ex = semanaAtual().dias[di].exercicios[ei];
   ex.nome = valor;
   const match = bibliotecaCache.find(b=>b.nome.toLowerCase()===valor.toLowerCase());
-  if(match && !ex.videoUrl){
+  if(match && ex.videoUrl !== match.videoUrl){
     ex.videoUrl = match.videoUrl;
     toast('Vídeo preenchido automaticamente 🎬','ok');
     renderTreinoDias();
   }
 }
-async function upsertBibliotecaAoSalvar(plano){
-  const vistos = new Set();
-  for(const sem of (plano.semanas||[])){
-    for(const dia of (sem.dias||[])){
-      for(const ex of (dia.exercicios||[])){
-        if(!ex.nome || !ex.videoUrl) continue;
-        const nomeLower = ex.nome.trim().toLowerCase();
-        if(!nomeLower || vistos.has(nomeLower)) continue;
-        vistos.add(nomeLower);
-        const docId = currentUser.uid + '_' + nomeLower.replace(/[^a-z0-9]+/g,'-').slice(0,80);
-        try{
-          await db.collection('bibliotecaExercicios').doc(docId).set({
-            trainerId: currentUser.uid, nome: ex.nome.trim(), nomeLower, videoUrl: ex.videoUrl,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          }, {merge:true});
-        }catch(err){ console.error(err); }
-      }
-    }
-  }
-  bibliotecaCache = []; // força recarregar na próxima vez
+function onSelecionarVideoBiblioteca(di, ei, videoUrl){
+  semanaAtual().dias[di].exercicios[ei].videoUrl = videoUrl;
 }
 let pesoChart = null;
 
@@ -719,8 +697,8 @@ async function renderTabTreino(box, aluno){
     <button class="btn btn-accent" style="margin-top:16px;" onclick="salvarPlano()">Salvar treino e dieta</button>
   `;
   renderPlanoSemanasTabs();
-  renderPlanoConteudo();
   await carregarBiblioteca();
+  renderPlanoConteudo();
 }
 function setPlanoTipo(val){
   planoEdit.tipo = val;
@@ -838,8 +816,11 @@ function renderTreinoDias(){
           <button class="btn btn-ghost btn-sm" onclick="removeExercicio(${di},${ei})">✕</button>
         </div>
         <div style="display:flex; gap:6px; align-items:center; margin:2px 0 10px;">
-          <input value="${escapeHtml(ex.videoUrl||'')}" placeholder="Link do vídeo (YouTube) — cole aqui a demonstração" oninput="semanaAtual().dias[${di}].exercicios[${ei}].videoUrl=this.value" style="flex:1; font-size:12px;">
-          <a href="https://www.youtube.com/results?search_query=${encodeURIComponent((ex.nome||'exercicio')+' execução correta iniciante')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="white-space:nowrap; text-decoration:none;">🔍 Buscar vídeo</a>
+          <label class="label" style="margin:0; white-space:nowrap;">Vídeo:</label>
+          <select onchange="onSelecionarVideoBiblioteca(${di},${ei},this.value)" style="flex:1; font-size:12px;">
+            <option value="">Sem vídeo</option>
+            ${bibliotecaCache.map(b=>`<option value="${escapeHtml(b.videoUrl)}" ${ex.videoUrl===b.videoUrl?'selected':''}>${escapeHtml(b.nome)}</option>`).join('')}
+          </select>
         </div>
       `).join('')}
       <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="addExercicio(${di})">+ Exercício</button>
@@ -940,7 +921,6 @@ async function salvarPlano(){
     planoEdit.observacoesGerais = document.getElementById('pl-obs').value.trim();
     planoEdit.updatedAt = firebase.firestore.Timestamp.now();
     await db.collection('alunos').doc(selectedAlunoId).update({plano: planoEdit});
-    await upsertBibliotecaAoSalvar(planoEdit);
     toast('Treino e dieta salvos com sucesso','ok');
   }catch(err){ toast(err.message,'err'); }
 }
