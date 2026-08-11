@@ -235,8 +235,13 @@ function initYoutubePlayer(containerId, videoId){
     if(!document.getElementById(containerId)) return;
     new YT.Player(containerId, {
       videoId: videoId,
-      playerVars: { rel:0, playsinline:1, loop:1, playlist:videoId },
+      playerVars: {
+        autoplay:1, mute:1, controls:0, rel:0, playsinline:1,
+        modestbranding:1, showinfo:0, iv_load_policy:3, disablekb:1, fs:0,
+        loop:1, playlist:videoId
+      },
       events: {
+        onReady: function(e){ e.target.playVideo(); },
         onStateChange: function(e){
           if(e.data === YT.PlayerState.ENDED){
             e.target.seekTo(0);
@@ -267,8 +272,8 @@ function renderVideoEmbed(videoUrl){
     return `
       <details ontoggle="onVideoDetailsToggle(this)" data-video-id="${escapeHtml(info.videoId)}" data-container-id="${containerId}" style="margin:8px 0 4px 32px;">
         <summary style="cursor:pointer; color:var(--accent); font-size:12px; font-weight:600;">▶️ Ver vídeo do exercício</summary>
-        <div style="margin-top:8px; position:relative; width:100%; max-width:420px; padding-top:56%;">
-          <div id="${containerId}" style="position:absolute; top:0; left:0; width:100%; height:100%; border-radius:10px; overflow:hidden;"></div>
+        <div style="margin-top:8px; position:relative; width:100%; max-width:420px; padding-top:56%; overflow:hidden; border-radius:10px; pointer-events:none;">
+          <div id="${containerId}" style="position:absolute; top:0; left:0; width:100%; height:100%;"></div>
         </div>
       </details>
     `;
